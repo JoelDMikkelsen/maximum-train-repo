@@ -82,7 +82,7 @@ const TrainProgress = (() => {
       ctx.scale(scale, scale);
       ctx.translate(-(cw / 2), -(ch / 2));
 
-      // Glow for advanced carriages
+      // Glow for advanced carriages (explicitly reset after use)
       if (car.style.glow) {
         ctx.shadowColor = car.style.fill;
         ctx.shadowBlur = 8;
@@ -97,7 +97,9 @@ const TrainProgress = (() => {
       ctx.lineWidth = 1.5;
       ctx.strokeRect(0, 0, cw, ch);
 
+      // Explicitly reset both shadow properties
       ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
 
       // Window(s) — small interior detail
       ctx.fillStyle = 'rgba(255,255,200,0.15)';
@@ -118,13 +120,14 @@ const TrainProgress = (() => {
       ctx.restore();
     });
 
-    // Progress counter (subtle, right-aligned)
+    // Progress counter (subtle, right-aligned) — isolated in save/restore
+    ctx.save();
     ctx.fillStyle = '#334';
     ctx.font = '10px monospace';
     ctx.textAlign = 'right';
     ctx.globalAlpha = 0.6;
     ctx.fillText(carriages.length + ' / ' + TOTAL_REQUIRED, w - 8, 18);
-    ctx.globalAlpha = 1;
+    ctx.restore();
 
     ctx.restore();
   }
