@@ -31,6 +31,7 @@ const Audio = (() => {
     gain.connect(ctx.destination);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 1.0);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
 
     // Harmonic overtone for richness
     osc2.type = 'sine';
@@ -41,6 +42,7 @@ const Audio = (() => {
     gain2.connect(ctx.destination);
     osc2.start(ctx.currentTime);
     osc2.stop(ctx.currentTime + 0.6);
+    osc2.onended = () => { osc2.disconnect(); gain2.disconnect(); };
   }
 
   function playNeutralTone() {
@@ -57,6 +59,7 @@ const Audio = (() => {
     gain.connect(ctx.destination);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.35);
+    osc.onended = () => { osc.disconnect(); gain.disconnect(); };
   }
 
   function playBossChord() {
@@ -76,6 +79,7 @@ const Audio = (() => {
       gain.connect(ctx.destination);
       osc.start(startTime);
       osc.stop(startTime + 3.0);
+      osc.onended = () => { osc.disconnect(); gain.disconnect(); };
     });
   }
 
