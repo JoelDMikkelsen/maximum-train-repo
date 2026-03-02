@@ -181,8 +181,9 @@ function gameLoop(timestamp) {
     BossReveal.draw(ctx, timestamp);
   }
 
-  drawIdleInvitation(timestamp); // Behind particles
-  drawParticles(ctx);            // Particles always on top
+  // Idle invitation only during puzzle — boss cinematics must not be interrupted
+  if (state === S.PUZZLE) drawIdleInvitation(timestamp);
+  drawParticles(ctx); // Particles always on top
 
   requestAnimationFrame(gameLoop);
 }

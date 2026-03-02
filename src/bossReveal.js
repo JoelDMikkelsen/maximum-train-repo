@@ -16,7 +16,7 @@ const BossReveal = (() => {
   let onDoneCallback = null;
 
   // Pre-generated window states for _drawBuilding (avoids Math.random() in draw)
-  // 10 floors × 3 windows = 30 booleans, shuffled once per reveal
+  // Floors 1-9 × 3 windows = 27 booleans, computed once per reveal
   let buildingWindowLit = [];
 
   const ZOOM_MS   = 2200;
@@ -201,9 +201,13 @@ const BossReveal = (() => {
       }
 
     } else if (phase === 'maximum_train') {
-      if (elapsed >= MT_MS) {
-        phase = 'complete';
-        if (onDoneCallback) onDoneCallback();
+      // Maximum Train runs forever — it never ends (per spec)
+      // Call callback once after MT_MS to signal the sequence has "arrived",
+      // but keep phase = 'maximum_train' so draw() renders the train indefinitely
+      if (elapsed >= MT_MS && onDoneCallback) {
+        const cb = onDoneCallback;
+        onDoneCallback = null; // Ensure it fires only once
+        cb();
       }
     }
   }
