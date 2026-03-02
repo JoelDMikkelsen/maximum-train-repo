@@ -15,6 +15,10 @@ const BossReveal = (() => {
   let mtCarriages = [];
   let onDoneCallback = null;
 
+  // Pre-generated window states for _drawBuilding (avoids Math.random() in draw)
+  // 10 floors × 3 windows = 30 booleans, shuffled once per reveal
+  let buildingWindowLit = [];
+
   const ZOOM_MS   = 2200;
   const SHOW_MS   = 2800;
   const MT_MS     = 6000;
@@ -33,10 +37,11 @@ const BossReveal = (() => {
     ctx.fillStyle = color + 'cc';
     ctx.fillRect(-bw / 2, -totalH, bw, totalH);
 
-    // Windows
+    // Windows — states pre-computed in startReveal() to keep draw() pure
     for (let f = 1; f < floors; f++) {
       for (let w = 0; w < 3; w++) {
-        const lit = Math.random() > 0.3;
+        const idx = (f - 1) * 3 + w;
+        const lit = buildingWindowLit[idx] !== false;
         ctx.fillStyle = lit ? 'rgba(255,255,180,0.5)' : 'rgba(255,255,180,0.08)';
         ctx.fillRect(-bw / 2 + 8 + w * 18, -totalH + f * fh + 3, 12, 11);
       }
@@ -161,6 +166,10 @@ const BossReveal = (() => {
     prevScale = 1;
     newScale = 0;
     onDoneCallback = callback || null;
+
+    // Pre-compute building window lit states (10 floors × 3 windows)
+    buildingWindowLit = Array.from({ length: 27 }, () => Math.random() > 0.3);
+
     console.log('[BossReveal] Revealing boss', index, ':', BOSS_VISUALS[index] && BOSS_VISUALS[index].name);
     Audio.playBossChord();
   }
@@ -205,7 +214,7 @@ const BossReveal = (() => {
     const cx = canvas.width / 2;
     const cy = canvas.height / 2;
     const boss = BOSS_VISUALS[bossIndex];
-    const prevBoss = BOSS_VISUALS[bossIndex - 1] || BOSS_VISUALS[0];
+    const prevBoss = BOSS_VISUALS[bossIndex - 1] || null;
 
     if (phase === 'zoom_out') {
       // Dark cinematic overlay
@@ -214,8 +223,8 @@ const BossReveal = (() => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.restore();
 
-      // Previous boss shrinking into the distance
-      if (prevBoss.drawFn) prevBoss.drawFn(ctx, cx, cy + 60, prevScale, prevBoss.color);
+      // Previous boss shrinking into the distance (only if there is one)
+      if (prevBoss && prevBoss.drawFn) prevBoss.drawFn(ctx, cx, cy + 60, prevScale, prevBoss.color);
 
       // Incoming boss label fades in
       const alpha = Math.min(1, (elapsed / ZOOM_MS) * 1.5);
@@ -303,6 +312,7 @@ const BossReveal = (() => {
 
   function isIdle() { return phase === 'idle'; }
   function isRunning() { return phase !== 'idle' && phase !== 'complete'; }
+  function isComplete() { return phase === 'complete'; }
 
-  return { init, startReveal, update, draw, isIdle, isRunning };
+  return { init, startReveal, update, draw, isIdle, isRunning, isComplete };
 })();
