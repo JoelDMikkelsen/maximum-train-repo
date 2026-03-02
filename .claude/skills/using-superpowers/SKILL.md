@@ -1,51 +1,38 @@
 ---
 name: using-superpowers
-description: Use when starting any conversation - establishes how to find and use skills, requiring Skill check before ANY response including clarifying questions
+description: Use when starting any conversation - establishes how to find and use skills
 ---
 
-<EXTREMELY-IMPORTANT>
-If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST check for and use the skill.
-
-IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
-
-This is not negotiable. This is not optional. You cannot rationalize your way out of this.
-</EXTREMELY-IMPORTANT>
+# Using Superpowers
 
 ## How to Access Skills
 
-Skills are stored in `.claude/skills/`. Read the relevant SKILL.md file when a skill applies.
+Skills are stored in `.claude/skills/`. Read the relevant SKILL.md when a skill applies.
 
 ## The Rule
 
-**Check relevant skills BEFORE any response or action.** Even a 1% chance a skill might apply means you should check it.
+**Check relevant skills BEFORE starting a new type of work.** You don't need to re-read a skill for every micro-action — read it once when you enter that work mode, then execute.
+
+## When to Check Skills
+
+| Situation | Skill to check |
+|-----------|---------------|
+| Starting a new feature | brainstorming, maximum-train-spec |
+| About to write code | maximum-train-implementation, TDD |
+| Writing canvas/animation code | canvas-animation |
+| Writing audio code | web-audio-api |
+| Bug or unexpected behavior | systematic-debugging |
+| Creating a plan | writing-plans |
+| Executing a plan | executing-plans or subagent-driven-development |
+| Finishing work | verification-before-completion, finishing-a-development-branch |
 
 ## Skill Priority
 
-When multiple skills could apply, use this order:
-
-1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
-2. **Domain skills second** (maximum-train-spec, canvas-animation, web-audio-api) - these guide execution
-3. **Implementation skills third** (test-driven-development, executing-plans) - these enforce discipline
-
-"Let's build X" -> brainstorming first, then domain skills, then implementation skills.
-"Fix this bug" -> debugging first, then domain-specific skills.
-
-## Red Flags
-
-These thoughts mean STOP - you're rationalizing:
-
-| Thought | Reality |
-|---------|---------|
-| "This is just a simple question" | Questions are tasks. Check for skills. |
-| "I need more context first" | Skill check comes BEFORE clarifying questions. |
-| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
-| "This doesn't need a formal skill" | If a skill exists, use it. |
-| "The skill is overkill" | Simple things become complex. Use it. |
+1. **Process skills** (brainstorming, debugging) — HOW to approach
+2. **Domain skills** (maximum-train-spec, canvas-animation) — WHAT to build
+3. **Implementation skills** (TDD, executing-plans) — HOW to build
 
 ## Skill Types
 
-**Rigid** (TDD, debugging, verification): Follow exactly. Don't adapt away discipline.
-
-**Flexible** (patterns, domain): Adapt principles to context.
-
-The skill itself tells you which.
+**Rigid** (TDD, debugging, verification): Follow exactly.
+**Flexible** (domain patterns, brainstorming): Adapt to context.
