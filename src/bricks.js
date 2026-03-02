@@ -51,7 +51,9 @@ const BrickSystem = (() => {
       if (!values.includes(v)) values.push(v);
       attempts++;
     }
-    // Fallback: ensure we always have 3 clusters even if range is tiny
+    // Fallback: if difficulty range too narrow for 3 distinct values, extend beyond max.
+    // This cannot occur with current DIFFICULTY_STAGES (smallest range is 2-5 = 4 values),
+    // but guards against future config mistakes.
     while (values.length < CLUSTER_COUNT) {
       values.push(values[values.length - 1] + 1);
     }
@@ -83,23 +85,8 @@ const BrickSystem = (() => {
     newPuzzle();
   }
 
-  function _drawCluster(ctx, cluster, timestamp) {
-    const t = timestamp * 0.001;
-    // Smooth sine-based float
-    const floatX = cluster.baseX + Math.cos(t * 0.7 + cluster.phase) * 18;
-    const floatY = cluster.baseY + Math.sin(t + cluster.phase) * 22;
-
-    // Deflection wobble (when wrong answer tapped)
-    let dx = 0, dy = 0;
-    if (cluster.isDeflecting) {
-      const wobble = Math.sin(cluster.deflectTimer * 0.025) * Math.exp(-cluster.deflectTimer * 0.003);
-      dx = Math.cos(cluster.deflectAngle) * wobble * 22;
-      dy = Math.sin(cluster.deflectAngle) * wobble * 8;
-    }
-
-    cluster.x = floatX + dx;
-    cluster.y = floatY + dy;
-
+  function _drawCluster(ctx, cluster) {
+    // Position is computed by update() — draw() is a pure observer
     const r = cluster.radius;
     const cx = cluster.x;
     const cy = cluster.y;
@@ -146,14 +133,25 @@ const BrickSystem = (() => {
 
   function update(dt, timestamp) {
     if (!isActive) return;
+    const t = timestamp * 0.001;
     clusters.forEach(c => {
+      // Compute rendered position here so draw() is a pure observer
+      const floatX = c.baseX + Math.cos(t * 0.7 + c.phase) * 18;
+      const floatY = c.baseY + Math.sin(t + c.phase) * 22;
+      let dx = 0, dy = 0;
       if (c.isDeflecting) {
         c.deflectTimer += dt;
         if (c.deflectTimer > 700) {
           c.isDeflecting = false;
           c.deflectTimer = 0;
+        } else {
+          const wobble = Math.sin(c.deflectTimer * 0.025) * Math.exp(-c.deflectTimer * 0.003);
+          dx = Math.cos(c.deflectAngle) * wobble * 22;
+          dy = Math.sin(c.deflectAngle) * wobble * 8;
         }
       }
+      c.x = floatX + dx;
+      c.y = floatY + dy;
     });
   }
 
@@ -170,7 +168,7 @@ const BrickSystem = (() => {
     ctx.restore();
 
     // Clusters
-    clusters.forEach(c => _drawCluster(ctx, c, timestamp));
+    clusters.forEach(c => _drawCluster(ctx, c));
   }
 
   function handleTap(x, y) {
