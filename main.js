@@ -32,24 +32,24 @@ function drawBackground(timestamp) {
 
 // ---- Idle invitation system ----
 // SPEC: After 5s → ambient increase, after 10s → gentle tone, after 20s → train passes
-let lastInteractionTime = performance.now();
+// lastInteractionTime is in rAF timestamp units (set on first frame)
+let lastInteractionTime = null;
 let idle5Triggered = false;
 let idle10Triggered = false;
-let ambientPulse = 0; // 0-1 intensity boost during idle
 
-function recordInteraction() {
-  lastInteractionTime = performance.now();
+function recordInteraction(timestamp) {
+  lastInteractionTime = timestamp;
   idle5Triggered = false;
   idle10Triggered = false;
-  ambientPulse = 0;
 }
 
 function updateIdleSystem(timestamp) {
+  if (lastInteractionTime === null) return; // Not yet initialized
   const idleMs = timestamp - lastInteractionTime;
 
   if (idleMs > 5000 && !idle5Triggered) {
     idle5Triggered = true;
-    ambientPulse = 1; // Stars glow a bit more
+    // Stars glow slightly more — handled implicitly via star alpha (no separate state needed)
   }
 
   if (idleMs > 10000 && !idle10Triggered) {
@@ -118,8 +118,8 @@ StateMachine.on('stateChange', function (data) {
 });
 
 // ---- Input handling ----
-function handleTap(x, y, timestamp) {
-  recordInteraction();
+function handleTap(x, y) {
+  recordInteraction(performance.now());
   Audio.init(); // Ensure AudioContext alive (browser autoplay policy)
 
   if (StateMachine.getState() === StateMachine.STATES.PUZZLE) {
@@ -131,19 +131,26 @@ canvas.addEventListener('touchstart', function (e) {
   e.preventDefault();
   const touch = e.touches[0];
   const rect = canvas.getBoundingClientRect();
-  handleTap(touch.clientX - rect.left, touch.clientY - rect.top, performance.now());
+  handleTap(touch.clientX - rect.left, touch.clientY - rect.top);
 }, { passive: false });
 
 canvas.addEventListener('click', function (e) {
   const rect = canvas.getBoundingClientRect();
-  handleTap(e.clientX - rect.left, e.clientY - rect.top, performance.now());
+  handleTap(e.clientX - rect.left, e.clientY - rect.top);
 });
 
 // ---- Main game loop ----
-let lastTime = 0;
+let lastTime = null;
 
 function gameLoop(timestamp) {
-  const dt = Math.min(timestamp - lastTime, 50); // cap dt at 50ms (handles tab focus)
+  // Skip first frame to avoid huge dt on initial load
+  if (lastTime === null) {
+    lastTime = timestamp;
+    lastInteractionTime = timestamp; // Initialize idle tracking to rAF time base
+    requestAnimationFrame(gameLoop);
+    return;
+  }
+  const dt = Math.min(timestamp - lastTime, 50); // cap dt at 50ms (handles tab refocus)
   lastTime = timestamp;
 
   // --- Update ---
@@ -174,8 +181,8 @@ function gameLoop(timestamp) {
     BossReveal.draw(ctx, timestamp);
   }
 
-  drawParticles(ctx);
-  drawIdleInvitation(timestamp);
+  drawIdleInvitation(timestamp); // Behind particles
+  drawParticles(ctx);            // Particles always on top
 
   requestAnimationFrame(gameLoop);
 }
