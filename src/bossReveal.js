@@ -423,7 +423,7 @@ const BossReveal = (() => {
 
     if (phase === 'maximum_tree') {
       if (!_treeFull) {
-        _treeGrowth = Math.min(_treeSegments.length, _treeGrowth + 0.9);
+        _treeGrowth = Math.min(_treeSegments.length, _treeGrowth + 2.7);
         if (_treeGrowth >= _treeSegments.length) {
           _treeFull = true;
         }
