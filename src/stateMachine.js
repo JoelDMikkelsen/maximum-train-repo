@@ -26,8 +26,7 @@ const StateMachine = (() => {
 
     const isLastBoss = bossIndex >= Milestones.getFinalIndex();
     if (isLastBoss) {
-            _transition(STATES.MAXIMUM_TRAIN);
-      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
+      _transition(STATES.MAXIMUM_TRAIN);
       try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
       return true;
     }
@@ -81,8 +80,7 @@ const StateMachine = (() => {
     _emit('carriageChanged', { count: carriageCount });
 
     if (bossIndex >= Milestones.getFinalIndex()) {
-            _transition(STATES.MAXIMUM_TRAIN);
-      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
+      _transition(STATES.MAXIMUM_TRAIN);
       try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
       return true;
     }
