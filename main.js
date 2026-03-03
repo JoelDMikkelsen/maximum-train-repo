@@ -115,16 +115,23 @@ StateMachine.on('stateChange', function (data) {
 
   if (data.state === S.MAXIMUM_TREE) {
     BrickSystem.reset();
-    if (window.Score) Score.onMaximumTree();
+    Score.onMaximumTree();
     BossReveal.startReveal(StateMachine.getBossIndex(), function () {
       console.log('[MaximumTree] The tree grows forever.');
     });
   }
 });
 
+StateMachine.on('keepGoing', function () {
+  // Player answered Keep Going — return to puzzle for one more stage before Maximum Tree
+  BossReveal.init();
+  window.maximumTrainStart = null;
+  BrickSystem.activate();
+});
+
 StateMachine.on('restart', function () {
   BossReveal.init();
-  if (window.Score) Score.reset();
+  Score.reset();
   BrickSystem.activate();
   window.maximumTrainStart = null;
   lastInteractionTime = performance.now();
@@ -199,7 +206,7 @@ function gameLoop(timestamp) {
   }
 
   updateParticles(dt);
-  if (window.Score) Score.update(dt);
+  Score.update(dt);
   if (window.updateNumberRain) updateNumberRain(dt);
 
   drawBackground(timestamp);
@@ -215,7 +222,7 @@ function gameLoop(timestamp) {
   }
 
   TrainProgress.draw(ctx);
-  if (window.Score) Score.draw(ctx);
+  Score.draw(ctx);
 
   if (state === S.PUZZLE) {
     BrickSystem.draw(ctx, timestamp);
@@ -237,7 +244,7 @@ function gameLoop(timestamp) {
 // ---- Init ----
 function init() {
   TrainProgress.init();
-  if (window.Score) Score.reset();
+  Score.reset();
   BossReveal.init();
   BrickSystem.init();
   console.log('[MaximumTrain] Initialised. State:', StateMachine.getState());

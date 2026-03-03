@@ -25,15 +25,23 @@ const StateMachine = (() => {
     const threshold = Milestones.getThreshold(bossIndex);
     if (carriageCount < threshold) return false;
 
-    const isLastBoss = bossIndex >= Milestones.getFinalIndex();
-    if (isLastBoss) {
+    const m = Milestones.get(bossIndex);
+
+    // Maximum Tree: only reachable after Keep Going, triggers its own state
+    if (m && m.key === 'maximum-tree') {
+      _transition(STATES.MAXIMUM_TREE);
+      return true;
+    }
+
+    // Maximum Train: normal end-of-game
+    if (bossIndex >= Milestones.getFinalIndex()) {
       _transition(STATES.MAXIMUM_TRAIN);
-      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
+      try { Score.onMaximumTrain(); } catch (e) {}
       return true;
     }
 
     _transition(STATES.BOSS);
-    _emit('bossRevealed', { bossIndex, boss: Milestones.get(bossIndex) });
+    _emit('bossRevealed', { bossIndex, boss: m });
     return true;
   }
 
@@ -51,15 +59,13 @@ const StateMachine = (() => {
   function getTotalBossCount() { return Milestones.count(); }
 
   function onCorrectAnswer(payload) {
-    if (currentState === STATES.MAXIMUM_TRAIN) return;
+    if (currentState === STATES.MAXIMUM_TRAIN || currentState === STATES.MAXIMUM_TREE) return;
 
     carriageCount++;
     try {
-      if (window.Score) {
-        const tv = payload && typeof payload.target === 'number' ? payload.target : 0;
-        Score.award(bossIndex, tv);
-        _emit('scoreChanged', { score: Score.getDisplayString && Score.getDisplayString() });
-      }
+      const tv = payload && typeof payload.target === 'number' ? payload.target : 0;
+      Score.award(bossIndex, tv);
+      _emit('scoreChanged', { score: Score.getDisplayString() });
     } catch (e) { /* ignore score errors */ }
     _emit('carriageChanged', { count: carriageCount });
     _tryAdvanceStage();
@@ -68,33 +74,42 @@ const StateMachine = (() => {
   function onBossComplete() {
     if (currentState !== STATES.BOSS) return;
 
-    bossIndex = Math.min(bossIndex + 1, Milestones.getFinalIndex());
+    // Allow bossIndex to advance past FINAL_INDEX when in the Keep Going flow
+    bossIndex = Math.min(bossIndex + 1, Milestones.getAll().length - 1);
     _transition(STATES.PUZZLE);
     _emit('puzzleResumed', { bossIndex, difficulty: getCurrentDifficulty() });
   }
 
   // Developer helper: jump to next milestone threshold.
   function debugAdvanceMilestone() {
-    if (currentState === STATES.MAXIMUM_TRAIN) return false;
+    if (currentState === STATES.MAXIMUM_TRAIN || currentState === STATES.MAXIMUM_TREE) return false;
 
     carriageCount = Milestones.getThreshold(bossIndex);
     _emit('carriageChanged', { count: carriageCount });
 
+    const m = Milestones.get(bossIndex);
+
+    if (m && m.key === 'maximum-tree') {
+      _transition(STATES.MAXIMUM_TREE);
+      return true;
+    }
+
     if (bossIndex >= Milestones.getFinalIndex()) {
       _transition(STATES.MAXIMUM_TRAIN);
-      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
+      try { Score.onMaximumTrain(); } catch (e) {}
       return true;
     }
 
     _transition(STATES.BOSS);
-    _emit('bossRevealed', { bossIndex, boss: Milestones.get(bossIndex), debug: true });
+    _emit('bossRevealed', { bossIndex, boss: m, debug: true });
     return true;
   }
 
   function onKeepGoing() {
     if (currentState !== STATES.MAXIMUM_TRAIN) return;
+    // Return to puzzle mode — player answers 6 more questions to reach Maximum Tree
     bossIndex = Milestones.getAll().findIndex(m => m.key === 'maximum-tree');
-    _transition(STATES.MAXIMUM_TREE);
+    _transition(STATES.PUZZLE);
     _emit('keepGoing', { bossIndex });
   }
 
