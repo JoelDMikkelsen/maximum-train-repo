@@ -26,7 +26,9 @@ const StateMachine = (() => {
 
     const isLastBoss = bossIndex >= Milestones.getFinalIndex();
     if (isLastBoss) {
-      _transition(STATES.MAXIMUM_TRAIN);
+            _transition(STATES.MAXIMUM_TRAIN);
+      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
+      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
       return true;
     }
 
@@ -48,10 +50,17 @@ const StateMachine = (() => {
   function getBossList() { return Milestones.getAll(); }
   function getTotalBossCount() { return Milestones.count(); }
 
-  function onCorrectAnswer() {
+  function onCorrectAnswer(payload) {
     if (currentState === STATES.MAXIMUM_TRAIN) return;
 
     carriageCount++;
+    try {
+      if (window.Score) {
+        const tv = payload && typeof payload.target === 'number' ? payload.target : 0;
+        Score.award(bossIndex, tv);
+        _emit('scoreChanged', { score: Score.getDisplayString && Score.getDisplayString() });
+      }
+    } catch (e) { /* ignore score errors */ }
     _emit('carriageChanged', { count: carriageCount });
     _tryAdvanceStage();
   }
@@ -72,7 +81,9 @@ const StateMachine = (() => {
     _emit('carriageChanged', { count: carriageCount });
 
     if (bossIndex >= Milestones.getFinalIndex()) {
-      _transition(STATES.MAXIMUM_TRAIN);
+            _transition(STATES.MAXIMUM_TRAIN);
+      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
+      try { if (window.Score) Score.onMaximumTrain(); } catch (e) {}
       return true;
     }
 

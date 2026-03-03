@@ -173,9 +173,12 @@ function gameLoop(timestamp) {
   }
 
   updateParticles(dt);
+  if (window.Score) Score.update(dt);
+  if (window.updateNumberRain) updateNumberRain(dt);
 
   drawBackground(timestamp);
   TrainProgress.draw(ctx);
+  if (window.Score) Score.draw(ctx);
 
   if (state === S.PUZZLE) {
     BrickSystem.draw(ctx, timestamp);
@@ -187,6 +190,7 @@ function gameLoop(timestamp) {
 
   if (state === S.PUZZLE) drawIdleInvitation(timestamp);
   drawParticles(ctx);
+  if (window.drawNumberRain) drawNumberRain(ctx, timestamp);
 
   requestAnimationFrame(gameLoop);
 }
@@ -194,6 +198,7 @@ function gameLoop(timestamp) {
 // ---- Init ----
 function init() {
   TrainProgress.init();
+  if (window.Score) Score.reset();
   BossReveal.init();
   BrickSystem.init();
   console.log('[MaximumTrain] Initialised. State:', StateMachine.getState());
