@@ -5,16 +5,16 @@ const Milestones = (() => {
 
   // Difficulty ramps are intentionally bounded (no giant puzzle values).
   const DIFFICULTY_STAGES = [
-    { min: 2, max: 5 },
-    { min: 3, max: 7 },
-    { min: 4, max: 9 },
-    { min: 5, max: 11 },
-    { min: 6, max: 13 },
-    { min: 7, max: 15 },
-    { min: 8, max: 17 },
-    { min: 9, max: 19 },
-    { min: 10, max: 22 },
-    { min: 11, max: 24 },
+    { band: 'Early' }, // 0
+    { band: 'Early' }, // 1
+    { band: 'Early' }, // 2
+    { band: 'Mid' },   // 3
+    { band: 'Mid' },   // 4
+    { band: 'Mid' },   // 5
+    { band: 'Late' },  // 6
+    { band: 'Late' },  // 7
+    { band: 'Late' },  // 8
+    { band: 'Late' },  // 9
   ];
 
   const ITEMS = [

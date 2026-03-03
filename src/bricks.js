@@ -1,9 +1,11 @@
 const BrickSystem = (() => {
-  const CLUSTER_COUNT = 3;
+  const CLUSTER_COUNT = 4; // 1 correct, 3 distractors
   let clusters = [];
   let targetNumber = 0;
   let promptText = '';
   let isActive = false;
+  let recentSignatures = [];
+  let recentOperators = [];
 
   // Visual styles to keep selection variety high.
   const STYLES = ['dots', 'squares', 'bars', 'constellation', 'beads'];
@@ -17,8 +19,9 @@ const BrickSystem = (() => {
 
   function getColors() {
     const diff = StateMachine.getCurrentDifficulty();
-    if (diff.min <= 2) return STAGE_COLORS[0];
-    if (diff.min <= 5) return STAGE_COLORS[1];
+    const band = diff.band || 'Early';
+    if (band === 'Early') return STAGE_COLORS[0];
+    if (band === 'Mid') return STAGE_COLORS[1];
     return STAGE_COLORS[2];
   }
 
@@ -40,28 +43,168 @@ const BrickSystem = (() => {
     };
   }
 
+  function generateQuestion(band, bossIndex) {
+    // Only introduce "sums" (equations) past the 1 billion milestone (bossIndex >= 3)
+    if (bossIndex < 3) {
+      let ans = randomInt(1, 15);
+      if (band === 'Mid') ans = randomInt(5, 40);
+      if (band === 'Late') ans = randomInt(10, 80);
+      return { op: 'none', text: `Find  ${ans}`, ans, sig: `find_${ans}`, a: ans, b: 0 };
+    }
+
+    let op = '+';
+    const r = Math.random();
+    if (band === 'Early') {
+      if (r < 0.45) op = '+';
+      else if (r < 0.8) op = '-';
+      else if (r < 0.9) op = '_';
+      else op = '*';
+    } else if (band === 'Mid') {
+      if (r < 0.3) op = '+';
+      else if (r < 0.6) op = '-';
+      else if (r < 0.75) op = '_';
+      else if (r < 0.95) op = '*';
+      else op = 'W';
+    } else {
+      if (r < 0.2) op = '+';
+      else if (r < 0.4) op = '-';
+      else if (r < 0.6) op = '_';
+      else if (r < 0.85) op = '*';
+      else op = 'W';
+    }
+
+    // operator fatigue
+    if (recentOperators.length >= 3 && recentOperators.every(x => x === op)) {
+      const ops = ['+', '-', '_', '*'].filter(x => x !== op);
+      op = ops[randomInt(0, ops.length - 1)];
+    }
+
+    let a = 0, b = 0, ans = 0;
+    let text = '';
+
+    // Scaled down difficulty ~20%
+    if (op === '+') {
+      if (band === 'Early') { a = randomInt(1, 16); b = randomInt(1, 16); }
+      else if (band === 'Mid') { a = randomInt(8, 40); b = randomInt(8, 40); }
+      else { a = randomInt(8, 64); b = randomInt(8, 64); }
+      while (a + b > 100) { b = Math.max(1, b - 10); }
+      ans = a + b;
+      text = `${a} + ${b}`;
+    } else if (op === '-') {
+      if (band === 'Early') { a = randomInt(8, 24); b = randomInt(1, 12); }
+      else if (band === 'Mid') { a = randomInt(16, 40); b = randomInt(8, 32); }
+      else { a = randomInt(40, 80); b = randomInt(8, 72); }
+      if (a < b) [a, b] = [b, a];
+      ans = a - b;
+      text = `${a} - ${b}`;
+    } else if (op === '_') {
+      if (band === 'Early') ans = randomInt(1, 12);
+      else if (band === 'Mid') ans = randomInt(4, 32);
+      else ans = randomInt(8, 64);
+      a = randomInt(4, Math.max(8, 100 - ans));
+      const total = a + ans;
+      if (Math.random() > 0.5) text = `${a} + ? = ${total}`;
+      else text = `? + ${a} = ${total}`;
+    } else if (op === '*') {
+      if (band === 'Early') { a = randomInt(1, 4); b = (Math.random() > 0.5) ? 2 : 10; }
+      else if (band === 'Mid') { a = randomInt(1, 8); b = [2, 3, 5, 10][randomInt(0, 3)]; }
+      else { a = randomInt(1, 8); b = [2, 3, 4, 5, 10][randomInt(0, 4)]; }
+      ans = a * b;
+      text = `${a} × ${b}`;
+    } else if (op === 'W') {
+      if (Math.random() > 0.5) {
+        a = randomInt(8, 32); b = randomInt(8, 32);
+        ans = a + b;
+        text = `${a} apples & ${b} more`;
+      } else {
+        a = randomInt(16, 48); b = randomInt(4, 12);
+        if (a < b) [a, b] = [b, a];
+        ans = a - b;
+        text = `Had ${a}, ate ${b}`;
+      }
+    }
+
+    const n1 = Math.min(a, b);
+    const n2 = Math.max(a, b);
+    const sig = `${n1}_${op}_${n2}`;
+
+    return { op, text, ans, sig, a, b };
+  }
+
+  function getDistractors(ans, op, a, b) {
+    const set = new Set([ans]);
+
+    // Distractor 1: Counting Error (+1, -1, +2, -2)
+    let d1Attempts = 0;
+    let d1 = ans;
+    while (set.has(d1) || d1 <= 0) {
+      d1 = ans + [-2, -1, 1, 2][randomInt(0, 3)];
+      if (++d1Attempts > 10) break;
+    }
+    if (d1 > 0 && !set.has(d1)) set.add(d1);
+
+    // Distractor 2: Tens or Reversal
+    let d2Attempts = 0;
+    let d2 = ans;
+    while (set.has(d2) || d2 <= 0) {
+      if (Math.random() > 0.5 && ans >= 10 && (ans % 10) !== Math.floor(ans / 10)) {
+        const s = ans.toString();
+        d2 = parseInt(s[1] + s[0], 10);
+      } else {
+        d2 = ans + [-10, 10][randomInt(0, 1)];
+      }
+      if (++d2Attempts > 10) break;
+    }
+    if (d2 > 0 && !set.has(d2)) set.add(d2);
+
+    // Distractor 3: Operation Swap
+    let d3 = ans;
+    if (op === '+') d3 = Math.max(1, Math.abs(a - b));
+    else if (op === '-') d3 = a + b;
+    else if (op === '*') d3 = a + b;
+    else if (op === '_') d3 = a + ans;
+
+    if (set.has(d3) || d3 <= 0 || d3 === ans) {
+      while (set.has(d3) || d3 <= 0) { d3 = ans + randomInt(3, 15); }
+    }
+    set.add(d3);
+
+    // Fill rest
+    while (set.size < CLUSTER_COUNT) {
+      const fd = ans + randomInt(-5, 15);
+      if (fd > 0 && !set.has(fd)) set.add(fd);
+    }
+
+    const arr = Array.from(set);
+    arr.splice(arr.indexOf(ans), 1);
+    return arr.slice(0, CLUSTER_COUNT - 1);
+  }
+
   function newPuzzle() {
     isActive = true;
-    const { min, max } = StateMachine.getCurrentDifficulty();
+    const diff = StateMachine.getCurrentDifficulty();
+    const band = diff.band || 'Early';
+    const bossIndex = StateMachine.getBossIndex();
     const colors = getColors();
 
-    // Pick target number
-    targetNumber = randomInt(min, max);
-
-    // Generate 3 distinct values — one correct, two distractors
-    const values = [targetNumber];
+    let q = null;
     let attempts = 0;
-    while (values.length < CLUSTER_COUNT && attempts < 100) {
-      const v = randomInt(min, max);
-      if (!values.includes(v)) values.push(v);
+    while (!q || recentSignatures.includes(q.sig)) {
+      q = generateQuestion(band, bossIndex);
       attempts++;
+      if (attempts >= 3) break;
     }
-    // Fallback: if difficulty range too narrow for 3 distinct values, extend beyond max.
-    // This cannot occur with current DIFFICULTY_STAGES (smallest range is 2-5 = 4 values),
-    // but guards against future config mistakes.
-    while (values.length < CLUSTER_COUNT) {
-      values.push(values[values.length - 1] + 1);
-    }
+
+    targetNumber = q.ans;
+    promptText = q.text;
+
+    recentSignatures.push(q.sig);
+    if (recentSignatures.length > 15) recentSignatures.shift();
+    recentOperators.push(q.op);
+    if (recentOperators.length > 3) recentOperators.shift();
+
+    const distractors = getDistractors(q.ans, q.op, q.a, q.b);
+    const values = [targetNumber, ...distractors];
 
     // Shuffle
     for (let i = values.length - 1; i > 0; i--) {
@@ -80,14 +223,12 @@ const BrickSystem = (() => {
       const y = topPad + playH * 0.35 + randomBetween(-30, 30);
       const color = colors[i % colors.length];
 
-      // Style variety increases as you progress through milestones.
       const stage = StateMachine.getBossIndex();
       const maxStyle = stage < 2 ? 2 : stage < 5 ? 3 : STYLES.length;
       const style = STYLES[(i + randomInt(0, maxStyle - 1)) % maxStyle];
 
       const c = makeCluster(v, x, y, i * 2.09, color, style);
 
-      // Precompute a layout for constellation/beads to keep it stable while floating.
       if (style === 'constellation' || style === 'beads') {
         const pts = [];
         const total = v;
@@ -98,12 +239,10 @@ const BrickSystem = (() => {
         }
         c.layout = pts;
       }
-
       return c;
     });
 
-    promptText = 'Find  ' + targetNumber;
-    console.log('[BrickSystem] New puzzle: find', targetNumber, '| clusters:', values);
+    console.log('[BrickSystem] New puzzle:', promptText, '=', targetNumber, '| clusters:', values);
   }
 
   function init() {
@@ -293,7 +432,7 @@ const BrickSystem = (() => {
     ctx.font = '600 30px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
     ctx.fillStyle = '#cceeff';
     ctx.globalAlpha = 0.92;
-    ctx.fillText(promptText, canvas.width / 2, 150);
+    ctx.fillText(promptText, canvas.width / 2, 120);
     ctx.restore();
 
     // Clusters
@@ -328,6 +467,7 @@ const BrickSystem = (() => {
           cluster.isDeflecting = true;
           cluster.deflectTimer = 0;
           cluster.deflectAngle = Math.atan2(dy, dx) + Math.PI;
+          if (window.Score) Score.breakCombo();
         }
         return;
       }

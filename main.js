@@ -104,6 +104,7 @@ StateMachine.on('stateChange', function (data) {
 
   if (data.state === S.MAXIMUM_TRAIN) {
     BrickSystem.reset();
+    window.maximumTrainStart = performance.now();
     BossReveal.startReveal(StateMachine.getBossIndex(), function () {
       console.log('[MaximumTrain] The universe has been fully revealed.');
     });
@@ -177,6 +178,17 @@ function gameLoop(timestamp) {
   if (window.updateNumberRain) updateNumberRain(dt);
 
   drawBackground(timestamp);
+
+  ctx.save();
+  if (state === S.MAXIMUM_TRAIN && window.maximumTrainStart) {
+    const elapsed = performance.now() - window.maximumTrainStart;
+    if (elapsed <= 3500) {
+      const t = timestamp * 0.05;
+      const intensity = 15 * (1 - elapsed / 3500);
+      ctx.translate(Math.sin(t) * intensity, Math.cos(t * 1.3) * intensity);
+    }
+  }
+
   TrainProgress.draw(ctx);
   if (window.Score) Score.draw(ctx);
 
@@ -191,6 +203,8 @@ function gameLoop(timestamp) {
   if (state === S.PUZZLE) drawIdleInvitation(timestamp);
   drawParticles(ctx);
   if (window.drawNumberRain) drawNumberRain(ctx, timestamp);
+
+  ctx.restore();
 
   requestAnimationFrame(gameLoop);
 }

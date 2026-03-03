@@ -1,70 +1,47 @@
 const Score = (() => {
-  // Score is stored as a "scientific-ish" value: mantissa * 10^exp
-  // This keeps it stable across huge jumps (googol / googolplex etc.)
-  let mantissa = 0;
-  let exp = 0;
+  let scoreBigInt = 0n;
+  let targetScoreString = "0";
+  let displayString = "0";
+
+  let consecutiveCorrect = 0;
+
   let isBursting = false;
   let burstElapsed = 0;
 
-  // Smooth display
-  let dispMantissa = 0;
-  let dispExp = 0;
-
   function reset() {
-    mantissa = 0;
-    exp = 0;
-    dispMantissa = 0;
-    dispExp = 0;
+    scoreBigInt = 0n;
+    targetScoreString = "0";
+    displayString = "0";
+    consecutiveCorrect = 0;
     isBursting = false;
     burstElapsed = 0;
   }
 
-  function _normalize(m, e) {
-    if (m === 0) return { m: 0, e: 0 };
-    while (m >= 10) { m /= 10; e += 1; }
-    while (m < 1) { m *= 10; e -= 1; }
-    return { m, e };
-  }
-
-  function _addScientific(m1, e1, m2, e2) {
-    if (m1 === 0) return _normalize(m2, e2);
-    if (m2 === 0) return _normalize(m1, e1);
-
-    // Keep larger exponent as base.
-    if (e2 > e1) {
-      [m1, m2] = [m2, m1];
-      [e1, e2] = [e2, e1];
-    }
-    const diff = e1 - e2;
-
-    // If the gap is huge, the smaller term doesn't matter visually.
-    if (diff > 8) return _normalize(m1, e1);
-
-    const m = m1 + (m2 / Math.pow(10, diff));
-    return _normalize(m, e1);
-  }
-
-  // Award points for a correct answer at the current stage.
-  // We intentionally keep the puzzle difficulty bounded while making the *score* feel epic.
   function award(stageIndex, targetValue) {
     if (isBursting) return;
 
-    // Base exponent ladder: hundreds -> thousands -> millions -> ... -> trillions-ish by quintillion.
-    const BASE_EXPS = [2, 3, 5, 7, 9, 12, 14, 18, 24, 30];
-    const baseExp = BASE_EXPS[Math.min(stageIndex, BASE_EXPS.length - 1)];
+    consecutiveCorrect++;
+    let multiplier = 1.0;
+    if (consecutiveCorrect === 2) multiplier = 1.2;
+    else if (consecutiveCorrect === 3) multiplier = 1.5;
+    else if (consecutiveCorrect >= 4) multiplier = 2.0;
 
-    // Small variation based on the selected number (2..24) so it still "feels" like the choice mattered.
-    const bump = Math.min(2, Math.floor((targetValue || 0) / 8)); // 0..2
-    const e = baseExp + bump;
+    const BASE_EXPS = [0, 1, 4, 7, 10, 16, 98, 250, 800, 4000];
+    const e = BASE_EXPS[Math.min(stageIndex, BASE_EXPS.length - 1)];
 
-    // Mantissa ranges around 1..9 with a slight stage-dependent lift.
-    const stageLift = 1 + Math.min(0.9, stageIndex * 0.09);
-    const m = (1.2 + Math.random() * 7.6) * stageLift;
+    const basePoints = BigInt(Math.floor(250 * multiplier));
+    const increase = basePoints * (10n ** BigInt(e));
 
-    const out = _normalize(m, e);
-    const sum = _addScientific(mantissa, exp, out.m, out.e);
-    mantissa = sum.m;
-    exp = sum.e;
+    scoreBigInt += increase;
+    targetScoreString = scoreBigInt.toString();
+    _recalcDisplay();
+  }
+
+  // If wrong answer, break combo (requires a hook, but `award` only called on correct)
+  // To handle wrong answers resetting combo, we'd need another public `onWrongAnswer` method.
+  // We'll add it and update StateMachine to call it.
+  function breakCombo() {
+    consecutiveCorrect = 0;
   }
 
   function onMaximumTrain() {
@@ -72,63 +49,44 @@ const Score = (() => {
     isBursting = true;
     burstElapsed = 0;
 
-    // Kick the score up into "beyond numbers" territory.
-    const jump = _normalize(9.99, Math.max(exp + 6, 36));
-    const sum = _addScientific(mantissa, exp, jump.m, jump.e);
-    mantissa = sum.m;
-    exp = sum.e;
+    // "Cosmic endless wall of digits"
+    // Add something even bigger than Graham's number exponent (4000). Let's do 4050.
+    const jump = 250n * (10n ** 4050n);
+    scoreBigInt += jump;
+    targetScoreString = scoreBigInt.toString();
+    _recalcDisplay();
 
-    // Trigger the number rain effect.
     if (window.spawnNumberRain) {
-      window.spawnNumberRain(canvas.width * 0.5, 0, 110);
+      window.spawnNumberRain(canvas.width * 0.5, 0, 150);
+    }
+  }
+
+  function _recalcDisplay() {
+    let s = targetScoreString;
+    // Commas for smaller numbers
+    if (s.length < 6) {
+      displayString = s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      return;
+    }
+    // Windowing for huge numbers
+    if (s.length > 180) {
+      displayString = '...' + s.slice(-180);
+    } else {
+      displayString = s;
     }
   }
 
   function update(dt) {
-    // Smooth approach to the displayed value.
-    // We only smooth mantissa when exponent is close; otherwise snap exponent and ease mantissa.
-    if (mantissa === 0) {
-      dispMantissa = lerp(dispMantissa, 0, 0.15);
-      dispExp = 0;
-    } else {
-      if (Math.abs(exp - dispExp) > 2) {
-        dispExp = exp;
-        dispMantissa = lerp(dispMantissa, mantissa, 0.18);
-      } else {
-        dispExp = lerp(dispExp, exp, 0.12);
-        dispMantissa = lerp(dispMantissa, mantissa, 0.18);
-      }
-    }
-
     if (isBursting) {
       burstElapsed += dt;
-      // Sustain a gentle stream of number-rain for a while.
       if (window.spawnNumberRain && burstElapsed < 14000) {
         if (Math.random() < 0.35) spawnNumberRain(canvas.width * Math.random(), 0, 6);
       }
     }
   }
 
-  function _formatSmallInt(n) {
-    const s = Math.floor(n).toString();
-    return s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  }
-
   function getDisplayString() {
-    if (mantissa === 0) return '0';
-
-    const de = Math.round(dispExp);
-    const dm = dispMantissa;
-
-    if (de < 6) {
-      // Render as an actual integer up to ~999,999
-      const val = dm * Math.pow(10, de);
-      return _formatSmallInt(val);
-    }
-
-    // Scientific display (clean, kid-friendly)
-    const mStr = dm.toFixed(dm < 2 ? 2 : 1);
-    return `${mStr}e${de}`;
+    return displayString;
   }
 
   function draw(ctx) {
@@ -140,8 +98,15 @@ const Score = (() => {
     ctx.fillStyle = 'rgba(7, 9, 24, 0.55)';
     ctx.strokeStyle = 'rgba(160, 200, 255, 0.25)';
     ctx.lineWidth = 1;
-        // Rounded rect (fallback if roundRect unsupported)
-    const rx = x - 6, ry = y - 18, rw = 190, rh = 28, rr = 10;
+
+    // Dynamic width based on string length (up to canvas bounds approx)
+    let rw = 190;
+    if (displayString.length > 15) {
+      // 7px per char roughly for 12px font
+      rw = Math.min(canvas.width - 40, 60 + displayString.length * 6.5);
+    }
+
+    const rx = x - 6, ry = y - 18, rh = 28, rr = 10;
     ctx.beginPath();
     if (ctx.roundRect) {
       ctx.roundRect(rx, ry, rw, rh, rr);
@@ -169,10 +134,16 @@ const Score = (() => {
     ctx.textAlign = 'right';
     ctx.fillStyle = '#eef4ff';
     ctx.font = '700 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-    ctx.fillText(getDisplayString(), x + 172, y);
 
+    // Check if we need to scale down the font for massive strings
+    if (displayString.length > 30) {
+      ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+      // We might need to handle wrapping, but for now just fit it as one long string stretching out
+    }
+
+    ctx.fillText(displayString, x + rw - 18, y);
     ctx.restore();
   }
 
-  return { reset, award, onMaximumTrain, update, draw, getDisplayString };
+  return { reset, award, breakCombo, onMaximumTrain, update, draw, getDisplayString };
 })();

@@ -3,7 +3,7 @@
 (function () {
   const _pool = [];
   const _active = [];
-  const DIGITS = ['0','1','2','3','4','5','6','7','8','9','∞'];
+  const DIGITS = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '∞', '∑', 'π', '!'];
 
   function spawnNumberRain(x, y, count) {
     for (let i = 0; i < count; i++) {
@@ -17,7 +17,13 @@
       p.size = 12 + Math.random() * 18;
       p.spin = randomBetween(-0.015, 0.015);
       p.rot = randomBetween(-0.6, 0.6);
-      p.char = DIGITS[randomInt(0, DIGITS.length - 1)];
+      let char = DIGITS[randomInt(0, DIGITS.length - 1)];
+      if (Math.random() > 0.8) {
+        let len = randomInt(5, 50);
+        char = '';
+        for (let j = 0; j < len; j++) char += DIGITS[randomInt(0, DIGITS.length - 1)];
+      }
+      p.char = char;
       p.alpha = 0.5 + Math.random() * 0.5;
       _active.push(p);
     }
