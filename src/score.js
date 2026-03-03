@@ -67,9 +67,10 @@ const Score = (() => {
   }
 
   function onMaximumTree() {
-    // Score digits explode from the score box
-    const bxCenter = 16 + 115;
-    const byCenter = 62 + 20;
+    // Score digits explode from the score box centre
+    const bh = 72;
+    const bxCenter = canvas.width / 2;
+    const byCenter = canvas.height - bh - 24 + bh / 2;
     if (window.spawnNumberRain) {
       spawnNumberRain(bxCenter, byCenter, 80);
     }
@@ -126,25 +127,27 @@ const Score = (() => {
   }
 
   function draw(ctx) {
-    const bx = 16, by = 62, bw = 230, bh = 40;
+    const bw = 320, bh = 72;
+    const bx = canvas.width / 2 - bw / 2;
+    const by = canvas.height - bh - 24;
 
     const scoreStr = _formatDisplayNum(displayedNum);
     const isFlashing = flashTimer > 0;
     const flashAlpha = isFlashing ? Math.min(1, flashTimer / 200) : 0;
 
     ctx.save();
-    ctx.globalAlpha = 0.92;
+    ctx.globalAlpha = 0.93;
 
     // Panel background
-    ctx.fillStyle = 'rgba(7, 9, 24, 0.82)';
+    ctx.fillStyle = 'rgba(7, 9, 24, 0.88)';
     ctx.strokeStyle = isFlashing
       ? `rgba(255,220,100,${flashAlpha})`
       : 'rgba(100,160,255,0.3)';
-    ctx.lineWidth = isFlashing ? 2 : 1;
+    ctx.lineWidth = isFlashing ? 2.5 : 1.5;
 
     if (ctx.roundRect) {
       ctx.beginPath();
-      ctx.roundRect(bx, by, bw, bh, 10);
+      ctx.roundRect(bx, by, bw, bh, 14);
     } else {
       ctx.beginPath();
       ctx.rect(bx, by, bw, bh);
@@ -154,20 +157,20 @@ const Score = (() => {
 
     // Label
     ctx.fillStyle = '#8899bb';
-    ctx.textAlign = 'left';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-    ctx.fillText('Your score', bx + 10, by + 13);
+    ctx.font = '500 13px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+    ctx.fillText('Your score', bx + bw / 2, by + 18);
 
-    // Value — animate color on flash
+    // Value — animate colour on flash
     ctx.fillStyle = isFlashing
-      ? `rgba(255,224,102,${0.5 + flashAlpha * 0.5})`
+      ? `rgba(255,224,102,${0.6 + flashAlpha * 0.4})`
       : '#eef4ff';
-    const fontSize = scoreStr.length > 14 ? 12 : scoreStr.length > 9 ? 15 : 18;
+    const fontSize = scoreStr.length > 16 ? 18 : scoreStr.length > 10 ? 24 : 30;
     ctx.font = `700 ${fontSize}px "Courier New", Courier, monospace`;
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(scoreStr, bx + bw - 10, by + 28);
+    ctx.fillText(scoreStr, bx + bw / 2, by + 50);
 
     ctx.restore();
   }
