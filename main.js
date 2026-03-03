@@ -31,7 +31,7 @@ function drawBackground(timestamp) {
 }
 
 // ---- Idle invitation system ----
-// SPEC: After 5s → ambient increase, after 10s → gentle tone, after 20s → train passes
+// SPEC: After 5s -> ambient increase, after 10s -> gentle tone, after 20s -> train passes
 // lastInteractionTime is in rAF timestamp units (set on first frame)
 let lastInteractionTime = null;
 let idle5Triggered = false;
@@ -44,12 +44,11 @@ function recordInteraction(timestamp) {
 }
 
 function updateIdleSystem(timestamp) {
-  if (lastInteractionTime === null) return; // Not yet initialized
+  if (lastInteractionTime === null) return;
   const idleMs = timestamp - lastInteractionTime;
 
   if (idleMs > 5000 && !idle5Triggered) {
     idle5Triggered = true;
-    // Stars glow slightly more — handled implicitly via star alpha (no separate state needed)
   }
 
   if (idleMs > 10000 && !idle10Triggered) {
@@ -63,7 +62,6 @@ function drawIdleInvitation(timestamp) {
   const idleMs = timestamp - lastInteractionTime;
   if (idleMs < 20000) return;
 
-  // Gentle train carriage drifts across the bottom
   const cycleDuration = 4000;
   const t = ((idleMs - 20000) % cycleDuration) / cycleDuration;
   const x = lerp(-90, canvas.width + 90, t);
@@ -79,7 +77,7 @@ function drawIdleInvitation(timestamp) {
   ctx.fillStyle = 'rgba(180,200,255,0.15)';
   ctx.fillRect(x - 24, y - 10, 16, 16);
   ctx.fillRect(x + 8, y - 10, 16, 16);
-  // Wheels
+
   ctx.fillStyle = '#111';
   ctx.strokeStyle = '#446';
   [x - 18, x + 18].forEach(wx => {
@@ -92,10 +90,6 @@ function drawIdleInvitation(timestamp) {
 }
 
 // ---- State machine wiring ----
-StateMachine.on('carriageAdded', function () {
-  TrainProgress.addCarriage();
-});
-
 StateMachine.on('stateChange', function (data) {
   const S = StateMachine.STATES;
 
@@ -110,8 +104,7 @@ StateMachine.on('stateChange', function (data) {
 
   if (data.state === S.MAXIMUM_TRAIN) {
     BrickSystem.reset();
-    // Maximum Train reveal — no callback needed, it loops forever
-    BossReveal.startReveal(2, function () {
+    BossReveal.startReveal(StateMachine.getBossIndex(), function () {
       console.log('[MaximumTrain] The universe has been fully revealed.');
     });
   }
@@ -120,7 +113,7 @@ StateMachine.on('stateChange', function (data) {
 // ---- Input handling ----
 function handleTap(x, y) {
   recordInteraction(performance.now());
-  Audio.init(); // Ensure AudioContext alive (browser autoplay policy)
+  Audio.init();
 
   if (StateMachine.getState() === StateMachine.STATES.PUZZLE) {
     BrickSystem.handleTap(x, y);
@@ -139,22 +132,34 @@ canvas.addEventListener('click', function (e) {
   handleTap(e.clientX - rect.left, e.clientY - rect.top);
 });
 
+const IS_MOBILE_DEVICE =
+  window.matchMedia('(pointer:coarse)').matches ||
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+if (!IS_MOBILE_DEVICE) {
+  window.addEventListener('keydown', function (e) {
+    if (e.key && e.key.toLowerCase() === 'm') {
+      if (StateMachine.getState() !== StateMachine.STATES.PUZZLE) return;
+      StateMachine.debugAdvanceMilestone();
+    }
+  });
+}
+
 // ---- Main game loop ----
 let lastTime = null;
 
 function gameLoop(timestamp) {
-  // Skip first frame to avoid huge dt on initial load
   if (lastTime === null) {
     lastTime = timestamp;
-    lastInteractionTime = timestamp; // Initialize idle tracking to rAF time base
+    lastInteractionTime = timestamp;
     requestAnimationFrame(gameLoop);
     return;
   }
-  const dt = Math.min(timestamp - lastTime, 50); // cap dt at 50ms (handles tab refocus)
+  const dt = Math.min(timestamp - lastTime, 50);
   lastTime = timestamp;
 
-  // --- Update ---
   updateIdleSystem(timestamp);
+  TrainProgress.setCarriageCount(StateMachine.getCarriageCount());
 
   const state = StateMachine.getState();
   const S = StateMachine.STATES;
@@ -169,9 +174,8 @@ function gameLoop(timestamp) {
 
   updateParticles(dt);
 
-  // --- Draw ---
   drawBackground(timestamp);
-  TrainProgress.draw(ctx, timestamp);
+  TrainProgress.draw(ctx);
 
   if (state === S.PUZZLE) {
     BrickSystem.draw(ctx, timestamp);
@@ -181,9 +185,8 @@ function gameLoop(timestamp) {
     BossReveal.draw(ctx, timestamp);
   }
 
-  // Idle invitation only during puzzle — boss cinematics must not be interrupted
   if (state === S.PUZZLE) drawIdleInvitation(timestamp);
-  drawParticles(ctx); // Particles always on top
+  drawParticles(ctx);
 
   requestAnimationFrame(gameLoop);
 }

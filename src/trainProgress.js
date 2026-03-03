@@ -1,138 +1,105 @@
 const TrainProgress = (() => {
-  // Total carriages across all bosses (5 per boss × 3 bosses)
-  const TOTAL_REQUIRED = 15;
-
-  // Visual style evolution — wooden → metal → glowing → abstract → cosmic
-  const STYLES = [
-    { fill: '#8B5E3C', stroke: '#5a3a1a', glow: false,  label: 'wooden'   }, // 1-3
-    { fill: '#607D8B', stroke: '#37474F', glow: false,  label: 'metal'    }, // 4-7
-    { fill: '#00BCD4', stroke: '#0097A7', glow: true,   label: 'glowing'  }, // 8-11
-    { fill: '#9C27B0', stroke: '#6A1B9A', glow: true,   label: 'abstract' }, // 12-13
-    { fill: '#ff88ff', stroke: '#cc44cc', glow: true,   label: 'cosmic'   }, // 14-15
-  ];
-
-  function getStyle(index) {
-    if (index < 3)  return STYLES[0];
-    if (index < 7)  return STYLES[1];
-    if (index < 11) return STYLES[2];
-    if (index < 13) return STYLES[3];
-    return STYLES[4];
-  }
-
-  let carriages = [];
+  let targetCarriageCount = 0;
+  let displayedCarriageCount = 0;
+  let displayedProgress = 0;
 
   function init() {
-    carriages = [];
+    targetCarriageCount = 0;
+    displayedCarriageCount = 0;
+    displayedProgress = 0;
   }
 
-  function addCarriage() {
-    const index = carriages.length;
-    carriages.push({
-      index,
-      style: getStyle(index),
-      addedAt: performance.now(), // for scale-in animation
-    });
+  function setCarriageCount(count) {
+    // Progress is monotonic for this game mode.
+    targetCarriageCount = Math.max(targetCarriageCount, count);
   }
 
-  function draw(ctx, timestamp) {
-    const trackY = 42;
-    const cw = 42;  // carriage width
-    const ch = 22;  // carriage height
-    const gap = 3;
-    const startX = 12;
-    const w = canvas.width;
+  function _drawRoundedRect(ctx, x, y, w, h, r) {
+    if (w <= 0 || h <= 0) return;
+    const rr = Math.min(r, w * 0.5, h * 0.5);
+
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.lineTo(x + w - rr, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+    ctx.lineTo(x + w, y + h - rr);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+    ctx.lineTo(x + rr, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+    ctx.lineTo(x, y + rr);
+    ctx.quadraticCurveTo(x, y, x + rr, y);
+    ctx.closePath();
+  }
+
+  function draw(ctx) {
+    displayedCarriageCount = lerp(displayedCarriageCount, targetCarriageCount, 0.18);
+    if (Math.abs(displayedCarriageCount - targetCarriageCount) < 0.01) {
+      displayedCarriageCount = targetCarriageCount;
+    }
+
+    const stageIndex = StateMachine.getBossIndex();
+    const targetProgress = Milestones.getProgress(displayedCarriageCount, stageIndex);
+    displayedProgress = Math.max(displayedProgress, lerp(displayedProgress, targetProgress, 0.2));
+    if (displayedProgress > 0.9995) displayedProgress = 1;
+
+    const x = 16;
+    const y = 18;
+    const w = canvas.width - 32;
+    const h = 24;
+    const radius = 8;
 
     ctx.save();
 
-    // Track bed
-    ctx.fillStyle = '#0d0d1e';
-    ctx.fillRect(0, trackY - ch / 2 - 4, w, ch + 8);
+    // Base panel
+    _drawRoundedRect(ctx, x - 6, y - 6, w + 12, h + 12, 10);
+    ctx.fillStyle = 'rgba(7, 9, 24, 0.88)';
+    ctx.fill();
 
-    // Rail lines
-    ctx.strokeStyle = '#2a2a4a';
-    ctx.lineWidth = 2;
-    [trackY - 8, trackY + 8].forEach(railY => {
-      ctx.beginPath();
-      ctx.moveTo(0, railY);
-      ctx.lineTo(w, railY);
-      ctx.stroke();
-    });
+    // Track
+    _drawRoundedRect(ctx, x, y, w, h, radius);
+    ctx.fillStyle = 'rgba(20, 28, 55, 0.85)';
+    ctx.fill();
 
-    // Sleepers (cross ties)
-    ctx.strokeStyle = '#1e1e38';
-    ctx.lineWidth = 3;
-    for (let sx = 0; sx < w; sx += 22) {
+    // Fill
+    const fillW = Math.max(0, Math.min(w, w * displayedProgress));
+    if (fillW > 0) {
+      _drawRoundedRect(ctx, x, y, fillW, h, radius);
+      const grd = ctx.createLinearGradient(x, y, x + fillW, y + h);
+      grd.addColorStop(0, '#5bd7ff');
+      grd.addColorStop(0.52, '#8ec2ff');
+      grd.addColorStop(1, '#ff88ff');
+      ctx.fillStyle = grd;
+      ctx.fill();
+    }
+
+    // Milestone ticks
+    const total = Milestones.count();
+    for (let i = 1; i < total; i++) {
+      const tx = x + (w * i / total);
+      const reached = displayedProgress >= (i / total);
+      ctx.strokeStyle = reached ? 'rgba(255,255,255,0.6)' : 'rgba(120,130,170,0.45)';
+      ctx.lineWidth = reached ? 2 : 1;
       ctx.beginPath();
-      ctx.moveTo(sx, trackY - 9);
-      ctx.lineTo(sx, trackY + 9);
+      ctx.moveTo(tx, y + 4);
+      ctx.lineTo(tx, y + h - 4);
       ctx.stroke();
     }
 
-    // Draw carriages
-    carriages.forEach((car, i) => {
-      const cx = startX + i * (cw + gap);
-      const cy = trackY - ch / 2;
+    // Text overlays
+    const currentMilestone = Milestones.get(stageIndex);
+    const pct = Math.round(displayedProgress * 100);
 
-      // Scale-in animation on first appearance
-      const elapsed = timestamp - car.addedAt;
-      const scale = Math.min(1, easeOutCubic(elapsed / 280));
+    ctx.fillStyle = '#dbe8ff';
+    ctx.textAlign = 'left';
+    ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+    ctx.fillText(currentMilestone ? currentMilestone.name : '', x + 10, y + 16);
 
-      ctx.save();
-      ctx.translate(cx + cw / 2, trackY);
-      ctx.scale(scale, scale);
-      ctx.translate(-(cw / 2), -(ch / 2));
-
-      // Glow for advanced carriages (explicitly reset after use)
-      if (car.style.glow) {
-        ctx.shadowColor = car.style.fill;
-        ctx.shadowBlur = 8;
-      }
-
-      // Body
-      ctx.fillStyle = car.style.fill;
-      ctx.fillRect(0, 0, cw, ch);
-
-      // Border
-      ctx.strokeStyle = car.style.stroke;
-      ctx.lineWidth = 1.5;
-      ctx.strokeRect(0, 0, cw, ch);
-
-      // Explicitly reset both shadow properties
-      ctx.shadowBlur = 0;
-      ctx.shadowColor = 'transparent';
-
-      // Window(s) — small interior detail
-      ctx.fillStyle = 'rgba(255,255,200,0.15)';
-      ctx.fillRect(6, 4, 10, 14);
-      ctx.fillRect(22, 4, 10, 14);
-
-      // Wheels
-      ctx.fillStyle = '#111';
-      ctx.strokeStyle = car.style.stroke;
-      ctx.lineWidth = 1.5;
-      [8, cw - 8].forEach(wx => {
-        ctx.beginPath();
-        ctx.arc(wx, ch, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      });
-
-      ctx.restore();
-    });
-
-    // Progress counter (subtle, right-aligned) — isolated in save/restore
-    ctx.save();
-    ctx.fillStyle = '#334';
-    ctx.font = '10px monospace';
     ctx.textAlign = 'right';
-    ctx.globalAlpha = 0.6;
-    ctx.fillText(carriages.length + ' / ' + TOTAL_REQUIRED, w - 8, 18);
-    ctx.restore();
+    ctx.fillStyle = '#eef4ff';
+    ctx.fillText(pct + '%', x + w - 10, y + 16);
 
     ctx.restore();
   }
 
-  function getCarriageCount() { return carriages.length; }
-
-  return { init, addCarriage, draw, getCarriageCount };
+  return { init, setCarriageCount, draw };
 })();
