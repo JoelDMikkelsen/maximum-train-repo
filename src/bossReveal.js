@@ -1,6 +1,6 @@
 const BossReveal = (() => {
-  const REVEAL_MS = 1100;
-  const HOLD_MS = 900;
+  const REVEAL_MS = 1400;
+  const HOLD_MS = 1100;
   const MAXIMUM_TRAIN_ENTRY_MS = 5000;
 
   let phase = 'idle';
