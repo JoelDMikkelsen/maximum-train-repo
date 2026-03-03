@@ -1,7 +1,7 @@
 const Milestones = (() => {
   // Cumulative carriage counts that trigger each milestone reveal in order.
   // Tuned to keep puzzle difficulty progression bounded while still feeling epic.
-  const THRESHOLDS = [4, 8, 13, 18, 24, 30, 36, 42, 48, 54];
+  const THRESHOLDS = [4, 8, 13, 18, 24, 30, 36, 42, 48, 54, 60];
 
   // Difficulty ramps are intentionally bounded (no giant puzzle values).
   const DIFFICULTY_STAGES = [
@@ -15,6 +15,7 @@ const Milestones = (() => {
     { band: 'Late' },  // 7
     { band: 'Late' },  // 8
     { band: 'Late' },  // 9
+    { band: 'Late' },  // 10
   ];
 
   const ITEMS = [
@@ -108,9 +109,20 @@ const Milestones = (() => {
       symbolicJump: 3.4,
       visual: 'maximum-train',
     },
+    {
+      key: 'maximum-tree',
+      name: 'maximum tree',
+      label: 'maximum tree',
+      color: '#44ff88',
+      type: 'symbolic',
+      symbolicJump: 4.0,
+      visual: 'maximum-tree',
+    },
   ];
 
-  const FINAL_INDEX = ITEMS.length - 1;
+  // FINAL_INDEX is the maximum-train milestone (index 9).
+  // maximum-tree (index 10) is only reachable via StateMachine.onKeepGoing().
+  const FINAL_INDEX = ITEMS.findIndex(m => m.key === 'maximum-train');
   function getAll() { return ITEMS; }
   function get(index) { return ITEMS[index] || null; }
   function count() { return ITEMS.length; }

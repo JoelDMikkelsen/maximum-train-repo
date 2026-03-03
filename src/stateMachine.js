@@ -2,7 +2,8 @@ const StateMachine = (() => {
   const STATES = {
     PUZZLE: 'PUZZLE_STATE',
     BOSS: 'BOSS_STATE',
-    MAXIMUM_TRAIN: 'MAXIMUM_TRAIN_STATE'
+    MAXIMUM_TRAIN: 'MAXIMUM_TRAIN_STATE',
+    MAXIMUM_TREE: 'MAXIMUM_TREE_STATE',
   };
 
   let currentState = STATES.PUZZLE;
@@ -90,6 +91,20 @@ const StateMachine = (() => {
     return true;
   }
 
+  function onKeepGoing() {
+    if (currentState !== STATES.MAXIMUM_TRAIN) return;
+    bossIndex = Milestones.getAll().findIndex(m => m.key === 'maximum-tree');
+    _transition(STATES.MAXIMUM_TREE);
+    _emit('keepGoing', { bossIndex });
+  }
+
+  function onRestart() {
+    carriageCount = 0;
+    bossIndex = 0;
+    _transition(STATES.PUZZLE);
+    _emit('restart', {});
+  }
+
   function reset() {
     currentState = STATES.PUZZLE;
     carriageCount = 0;
@@ -110,6 +125,8 @@ const StateMachine = (() => {
     getTotalBossCount,
     onCorrectAnswer,
     onBossComplete,
+    onKeepGoing,
+    onRestart,
     debugAdvanceMilestone,
     reset,
   };

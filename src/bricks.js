@@ -7,8 +7,8 @@ const BrickSystem = (() => {
   let recentSignatures = [];
   let recentOperators = [];
 
-  // Visual styles to keep selection variety high.
-  const STYLES = ['dots', 'squares', 'bars', 'constellation', 'beads'];
+  const NAMES = ['Hamish', 'Bonnie', 'Charlotte', 'Holly', 'Mummy', 'Daddy'];
+  const ITEMS = ['apples', 'jelly snakes', 'Yo-Chi cups', 'chocolates'];
 
   // Visual color sets per difficulty stage
   const STAGE_COLORS = [
@@ -25,7 +25,7 @@ const BrickSystem = (() => {
     return STAGE_COLORS[2];
   }
 
-  function makeCluster(value, baseX, baseY, phase, color, style) {
+  function makeCluster(value, baseX, baseY, phase, color) {
     return {
       value,
       baseX,
@@ -38,20 +38,10 @@ const BrickSystem = (() => {
       isDeflecting: false,
       deflectTimer: 0,
       deflectAngle: 0,
-      style: style || 'dots',
-      layout: null,
     };
   }
 
-  function generateQuestion(band, bossIndex) {
-    // Only introduce "sums" (equations) past the 1 billion milestone (bossIndex >= 3)
-    if (bossIndex < 3) {
-      let ans = randomInt(1, 15);
-      if (band === 'Mid') ans = randomInt(5, 40);
-      if (band === 'Late') ans = randomInt(10, 80);
-      return { op: 'none', text: `Find  ${ans}`, ans, sig: `find_${ans}`, a: ans, b: 0 };
-    }
-
+  function generateQuestion(band) {
     let op = '+';
     const r = Math.random();
     if (band === 'Early') {
@@ -112,15 +102,27 @@ const BrickSystem = (() => {
       ans = a * b;
       text = `${a} × ${b}`;
     } else if (op === 'W') {
+      const name = NAMES[randomInt(0, NAMES.length - 1)];
+      const item = ITEMS[randomInt(0, ITEMS.length - 1)];
       if (Math.random() > 0.5) {
-        a = randomInt(8, 32); b = randomInt(8, 32);
+        a = randomInt(8, 32); b = randomInt(4, 20);
         ans = a + b;
-        text = `${a} apples & ${b} more`;
+        const addT = [
+          `${name} had ${a} ${item}, gets ${b} more. Total?`,
+          `${a} ${item} here, ${b} over there. How many?`,
+          `${name} buys ${a} then ${b} ${item}. How many?`,
+        ];
+        text = addT[randomInt(0, addT.length - 1)];
       } else {
-        a = randomInt(16, 48); b = randomInt(4, 12);
+        a = randomInt(16, 48); b = randomInt(4, 14);
         if (a < b) [a, b] = [b, a];
         ans = a - b;
-        text = `Had ${a}, ate ${b}`;
+        const subT = [
+          `${name} had ${a} ${item} and ate ${b}. How many left?`,
+          `${a} ${item}. ${name} gives ${b} away. How many left?`,
+          `${name} starts with ${a} ${item}, eats ${b}. How many?`,
+        ];
+        text = subT[randomInt(0, subT.length - 1)];
       }
     }
 
@@ -184,13 +186,12 @@ const BrickSystem = (() => {
     isActive = true;
     const diff = StateMachine.getCurrentDifficulty();
     const band = diff.band || 'Early';
-    const bossIndex = StateMachine.getBossIndex();
     const colors = getColors();
 
     let q = null;
     let attempts = 0;
     while (!q || recentSignatures.includes(q.sig)) {
-      q = generateQuestion(band, bossIndex);
+      q = generateQuestion(band);
       attempts++;
       if (attempts >= 3) break;
     }
@@ -223,22 +224,7 @@ const BrickSystem = (() => {
       const y = topPad + playH * 0.35 + randomBetween(-30, 30);
       const color = colors[i % colors.length];
 
-      const stage = StateMachine.getBossIndex();
-      const maxStyle = stage < 2 ? 2 : stage < 5 ? 3 : STYLES.length;
-      const style = STYLES[(i + randomInt(0, maxStyle - 1)) % maxStyle];
-
-      const c = makeCluster(v, x, y, i * 2.09, color, style);
-
-      if (style === 'constellation' || style === 'beads') {
-        const pts = [];
-        const total = v;
-        for (let k = 0; k < total; k++) {
-          const ang = (Math.PI * 2 * k) / total + randomBetween(-0.25, 0.25);
-          const rad = randomBetween(0.18, 0.72);
-          pts.push({ a: ang, r: rad });
-        }
-        c.layout = pts;
-      }
+      const c = makeCluster(v, x, y, i * 2.09, color);
       return c;
     });
 
@@ -277,7 +263,7 @@ const BrickSystem = (() => {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.font = `700 ${Math.max(16, r * 0.65)}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`;
-    ctx.fillText(total.toString(), cx, cy);
+    ctx.fillText(cluster.value.toString(), cx, cy);
   }
 
   function update(dt, timestamp) {
@@ -307,10 +293,11 @@ const BrickSystem = (() => {
   function draw(ctx, timestamp) {
     if (!isActive) return;
 
-    // Prompt text
+    // Prompt text — font shrinks for longer sentences
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = '600 30px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+    const promptFontSize = promptText.length > 44 ? 19 : promptText.length > 28 ? 24 : 30;
+    ctx.font = `600 ${promptFontSize}px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif`;
     ctx.fillStyle = '#cceeff';
     ctx.globalAlpha = 0.92;
     ctx.fillText(promptText, canvas.width / 2, 120);

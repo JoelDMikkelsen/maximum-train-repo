@@ -1,20 +1,29 @@
 const Score = (() => {
   let scoreBigInt = 0n;
-  let targetScoreString = "0";
-  let displayString = "0";
+  let targetScoreString = '0';
+  let displayString = '0';
 
   let consecutiveCorrect = 0;
+
+  // Animated count-up display
+  let displayedNum = 0;    // Number (float) — animated toward targetNum
+  let flashTimer = 0;      // ms remaining for gold border flash
 
   let isBursting = false;
   let burstElapsed = 0;
 
+  let isExploded = false;  // true after Maximum Tree explosion
+
   function reset() {
     scoreBigInt = 0n;
-    targetScoreString = "0";
-    displayString = "0";
+    targetScoreString = '0';
+    displayString = '0';
     consecutiveCorrect = 0;
+    displayedNum = 0;
+    flashTimer = 0;
     isBursting = false;
     burstElapsed = 0;
+    isExploded = false;
   }
 
   function award(stageIndex, targetValue) {
@@ -35,11 +44,9 @@ const Score = (() => {
     scoreBigInt += increase;
     targetScoreString = scoreBigInt.toString();
     _recalcDisplay();
+    flashTimer = 400;
   }
 
-  // If wrong answer, break combo (requires a hook, but `award` only called on correct)
-  // To handle wrong answers resetting combo, we'd need another public `onWrongAnswer` method.
-  // We'll add it and update StateMachine to call it.
   function breakCombo() {
     consecutiveCorrect = 0;
   }
@@ -49,8 +56,6 @@ const Score = (() => {
     isBursting = true;
     burstElapsed = 0;
 
-    // "Cosmic endless wall of digits"
-    // Add something even bigger than Graham's number exponent (4000). Let's do 4050.
     const jump = 250n * (10n ** 4050n);
     scoreBigInt += jump;
     targetScoreString = scoreBigInt.toString();
@@ -61,22 +66,57 @@ const Score = (() => {
     }
   }
 
+  function onMaximumTree() {
+    // Score digits explode from the score box
+    const bxCenter = 16 + 115;
+    const byCenter = 62 + 20;
+    if (window.spawnNumberRain) {
+      spawnNumberRain(bxCenter, byCenter, 80);
+    }
+    displayedNum = Infinity;
+    isExploded = true;
+  }
+
   function _recalcDisplay() {
     let s = targetScoreString;
-    // Commas for smaller numbers
     if (s.length < 6) {
       displayString = s.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
       return;
     }
-    // Windowing for huge numbers
     if (s.length > 180) {
-      displayString = '...' + s.slice(-180);
+      displayString = '\u2026' + s.slice(-180);
     } else {
       displayString = s;
     }
   }
 
+  function _formatDisplayNum(n) {
+    if (isExploded) return 'MAXIMUM TREE';
+    if (!isFinite(n) || n > 1e60) return 'BEYOND COUNTING';
+    if (n >= 1e18) return (n / 1e18).toFixed(1) + ' quintillion';
+    if (n >= 1e15) return (n / 1e15).toFixed(1) + ' quadrillion';
+    if (n >= 1e12) return (n / 1e12).toFixed(1) + 'T';
+    if (n >= 1e9)  return (n / 1e9).toFixed(1) + 'B';
+    if (n >= 1e6)  return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3)  return Math.floor(n).toLocaleString();
+    return Math.floor(n).toString();
+  }
+
   function update(dt) {
+    // Animated count-up
+    if (!isExploded) {
+      const safe = scoreBigInt <= BigInt(Number.MAX_SAFE_INTEGER);
+      const targetNum = safe ? Number(scoreBigInt) : Infinity;
+      if (targetNum === Infinity) {
+        displayedNum = Infinity;
+      } else if (displayedNum < targetNum) {
+        const diff = targetNum - displayedNum;
+        displayedNum = Math.min(targetNum, displayedNum + Math.max(1, diff * 0.09));
+      }
+    }
+
+    if (flashTimer > 0) flashTimer = Math.max(0, flashTimer - dt);
+
     if (isBursting) {
       burstElapsed += dt;
       if (window.spawnNumberRain && burstElapsed < 14000) {
@@ -85,65 +125,56 @@ const Score = (() => {
     }
   }
 
+  function draw(ctx) {
+    const bx = 16, by = 62, bw = 230, bh = 40;
+
+    const scoreStr = _formatDisplayNum(displayedNum);
+    const isFlashing = flashTimer > 0;
+    const flashAlpha = isFlashing ? Math.min(1, flashTimer / 200) : 0;
+
+    ctx.save();
+    ctx.globalAlpha = 0.92;
+
+    // Panel background
+    ctx.fillStyle = 'rgba(7, 9, 24, 0.82)';
+    ctx.strokeStyle = isFlashing
+      ? `rgba(255,220,100,${flashAlpha})`
+      : 'rgba(100,160,255,0.3)';
+    ctx.lineWidth = isFlashing ? 2 : 1;
+
+    if (ctx.roundRect) {
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 10);
+    } else {
+      ctx.beginPath();
+      ctx.rect(bx, by, bw, bh);
+    }
+    ctx.fill();
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = '#8899bb';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = '500 11px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+    ctx.fillText('Your score', bx + 10, by + 13);
+
+    // Value — animate color on flash
+    ctx.fillStyle = isFlashing
+      ? `rgba(255,224,102,${0.5 + flashAlpha * 0.5})`
+      : '#eef4ff';
+    const fontSize = scoreStr.length > 14 ? 12 : scoreStr.length > 9 ? 15 : 18;
+    ctx.font = `700 ${fontSize}px "Courier New", Courier, monospace`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(scoreStr, bx + bw - 10, by + 28);
+
+    ctx.restore();
+  }
+
   function getDisplayString() {
     return displayString;
   }
 
-  function draw(ctx) {
-    const x = 18;
-    const y = 54;
-
-    ctx.save();
-    ctx.globalAlpha = 0.92;
-    ctx.fillStyle = 'rgba(7, 9, 24, 0.55)';
-    ctx.strokeStyle = 'rgba(160, 200, 255, 0.25)';
-    ctx.lineWidth = 1;
-
-    // Dynamic width based on string length (up to canvas bounds approx)
-    let rw = 190;
-    if (displayString.length > 15) {
-      // 7px per char roughly for 12px font
-      rw = Math.min(canvas.width - 40, 60 + displayString.length * 6.5);
-    }
-
-    const rx = x - 6, ry = y - 18, rh = 28, rr = 10;
-    ctx.beginPath();
-    if (ctx.roundRect) {
-      ctx.roundRect(rx, ry, rw, rh, rr);
-    } else {
-      const r = Math.min(rr, rw * 0.5, rh * 0.5);
-      ctx.moveTo(rx + r, ry);
-      ctx.lineTo(rx + rw - r, ry);
-      ctx.quadraticCurveTo(rx + rw, ry, rx + rw, ry + r);
-      ctx.lineTo(rx + rw, ry + rh - r);
-      ctx.quadraticCurveTo(rx + rw, ry + rh, rx + rw - r, ry + rh);
-      ctx.lineTo(rx + r, ry + rh);
-      ctx.quadraticCurveTo(rx, ry + rh, rx, ry + rh - r);
-      ctx.lineTo(rx, ry + r);
-      ctx.quadraticCurveTo(rx, ry, rx + r, ry);
-    }
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    ctx.fillStyle = '#dbe8ff';
-    ctx.textAlign = 'left';
-    ctx.font = '600 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-    ctx.fillText('Score', x + 6, y);
-
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#eef4ff';
-    ctx.font = '700 12px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-
-    // Check if we need to scale down the font for massive strings
-    if (displayString.length > 30) {
-      ctx.font = '700 10px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
-      // We might need to handle wrapping, but for now just fit it as one long string stretching out
-    }
-
-    ctx.fillText(displayString, x + rw - 18, y);
-    ctx.restore();
-  }
-
-  return { reset, award, breakCombo, onMaximumTrain, update, draw, getDisplayString };
+  return { reset, award, breakCombo, onMaximumTrain, onMaximumTree, update, draw, getDisplayString };
 })();

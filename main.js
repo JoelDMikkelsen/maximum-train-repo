@@ -31,8 +31,6 @@ function drawBackground(timestamp) {
 }
 
 // ---- Idle invitation system ----
-// SPEC: After 5s -> ambient increase, after 10s -> gentle tone, after 20s -> train passes
-// lastInteractionTime is in rAF timestamp units (set on first frame)
 let lastInteractionTime = null;
 let idle5Triggered = false;
 let idle10Triggered = false;
@@ -108,7 +106,28 @@ StateMachine.on('stateChange', function (data) {
     BossReveal.startReveal(StateMachine.getBossIndex(), function () {
       console.log('[MaximumTrain] The universe has been fully revealed.');
     });
+    // Wire restart/keep-going buttons
+    BossReveal.setChoiceCallbacks(
+      function () { StateMachine.onRestart(); },
+      function () { StateMachine.onKeepGoing(); }
+    );
   }
+
+  if (data.state === S.MAXIMUM_TREE) {
+    BrickSystem.reset();
+    if (window.Score) Score.onMaximumTree();
+    BossReveal.startReveal(StateMachine.getBossIndex(), function () {
+      console.log('[MaximumTree] The tree grows forever.');
+    });
+  }
+});
+
+StateMachine.on('restart', function () {
+  BossReveal.init();
+  if (window.Score) Score.reset();
+  BrickSystem.activate();
+  window.maximumTrainStart = null;
+  lastInteractionTime = performance.now();
 });
 
 // ---- Input handling ----
@@ -116,8 +135,14 @@ function handleTap(x, y) {
   recordInteraction(performance.now());
   Audio.init();
 
-  if (StateMachine.getState() === StateMachine.STATES.PUZZLE) {
+  const state = StateMachine.getState();
+  const S = StateMachine.STATES;
+
+  if (state === S.PUZZLE) {
     BrickSystem.handleTap(x, y);
+  }
+  if (state === S.MAXIMUM_TRAIN || state === S.MAXIMUM_TREE) {
+    BossReveal.handleTap(x, y);
   }
 }
 
@@ -169,7 +194,7 @@ function gameLoop(timestamp) {
     BrickSystem.update(dt, timestamp);
   }
 
-  if (state === S.BOSS || state === S.MAXIMUM_TRAIN) {
+  if (state === S.BOSS || state === S.MAXIMUM_TRAIN || state === S.MAXIMUM_TREE) {
     BossReveal.update(dt);
   }
 
@@ -196,7 +221,7 @@ function gameLoop(timestamp) {
     BrickSystem.draw(ctx, timestamp);
   }
 
-  if (state === S.BOSS || state === S.MAXIMUM_TRAIN) {
+  if (state === S.BOSS || state === S.MAXIMUM_TRAIN || state === S.MAXIMUM_TREE) {
     BossReveal.draw(ctx, timestamp);
   }
 

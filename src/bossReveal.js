@@ -2,12 +2,28 @@ const BossReveal = (() => {
   const REVEAL_MS = 1400;
   const HOLD_MS = 1100;
   const MAXIMUM_TRAIN_ENTRY_MS = 5000;
+  const CHOICE_DELAY_MS = 10000;  // show buttons after 10s of Maximum Train
 
   let phase = 'idle';
   let bossIndex = 0;
   let elapsed = 0;
   let onDoneCallback = null;
   let mtCarriages = [];
+
+  // Choice screen
+  let _btnRestart = null;
+  let _btnKeepGoing = null;
+  let _onRestartCb = null;
+  let _onKeepGoingCb = null;
+
+  // Maximum Tree
+  let _treeSegments = [];
+  let _treeGrowth = 0;
+  let _treeScale = 1;
+  let _treeFull = false;
+  let _treeLastSpawn = 0;
+
+  // ---- Milestone object drawing ----
 
   function _drawWindows(ctx, x, y, w, h, rows, cols, alpha) {
     ctx.fillStyle = `rgba(255,240,200,${alpha})`;
@@ -140,7 +156,9 @@ const BossReveal = (() => {
     ctx.restore();
   }
 
-  function _drawMaximumTrain(ctx, timestamp) {
+  // ---- Maximum Train carriages ----
+
+  function _drawMaximumTrainCarriages(ctx, timestamp) {
     const h = canvas.height;
     const trackY = h / 2;
     const speed = 0.55;
@@ -197,23 +215,178 @@ const BossReveal = (() => {
     ctx.restore();
   }
 
+  // ---- Choice screen buttons ----
+
+  function _drawChoiceButtons(ctx, timestamp) {
+    const cx = canvas.width / 2;
+    const by = canvas.height * 0.7;
+    const bw = 210, bh = 62, gap = 36;
+
+    _btnRestart = { x: cx - bw - gap / 2, y: by - bh / 2, w: bw, h: bh };
+    _btnKeepGoing = { x: cx + gap / 2, y: by - bh / 2, w: bw, h: bh };
+
+    const pulse = 0.85 + 0.15 * Math.sin(timestamp * 0.003);
+
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '600 21px -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif';
+
+    // Restart button
+    ctx.fillStyle = `rgba(20, 30, 60, ${0.92 * pulse})`;
+    ctx.strokeStyle = `rgba(140, 180, 255, ${pulse})`;
+    if (ctx.roundRect) {
+      ctx.beginPath(); ctx.roundRect(_btnRestart.x, _btnRestart.y, bw, bh, 12); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.fillRect(_btnRestart.x, _btnRestart.y, bw, bh);
+      ctx.strokeRect(_btnRestart.x, _btnRestart.y, bw, bh);
+    }
+    ctx.fillStyle = '#c8deff';
+    ctx.fillText('Restart', _btnRestart.x + bw / 2, _btnRestart.y + bh / 2);
+
+    // Keep Going button
+    ctx.fillStyle = `rgba(10, 40, 20, ${0.92 * pulse})`;
+    ctx.strokeStyle = `rgba(80, 255, 140, ${pulse})`;
+    if (ctx.roundRect) {
+      ctx.beginPath(); ctx.roundRect(_btnKeepGoing.x, _btnKeepGoing.y, bw, bh, 12); ctx.fill(); ctx.stroke();
+    } else {
+      ctx.fillRect(_btnKeepGoing.x, _btnKeepGoing.y, bw, bh);
+      ctx.strokeRect(_btnKeepGoing.x, _btnKeepGoing.y, bw, bh);
+    }
+    ctx.fillStyle = '#88ffcc';
+    ctx.fillText('Keep going \u2192', _btnKeepGoing.x + bw / 2, _btnKeepGoing.y + bh / 2);
+
+    ctx.restore();
+  }
+
+  // ---- Fractal tree (Maximum Tree) ----
+
+  function _buildTree(x, y, angle, length, depth, result) {
+    if (depth === 0 || length < 4) return;
+    const ex = x + Math.cos(angle) * length;
+    const ey = y + Math.sin(angle) * length;
+    result.push({ x1: x, y1: y, x2: ex, y2: ey, depth });
+    const spread = 0.44 - depth * 0.015;
+    _buildTree(ex, ey, angle - spread, length * 0.68, depth - 1, result);
+    _buildTree(ex, ey, angle + spread, length * 0.68, depth - 1, result);
+  }
+
+  // Colour gradient: deep green at trunk → cosmic purple → pink at tips
+  const TREE_DEPTH = 11;
+  function _treeColor(depth) {
+    const t = 1 - (depth / TREE_DEPTH);  // 0 = trunk, 1 = tip
+    const r = Math.round(lerp(20, 255, t * t));
+    const g = Math.round(lerp(200, 80, t));
+    const b = Math.round(lerp(60, 255, t));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function _drawFractalTree(ctx, timestamp) {
+    const cx = canvas.width / 2;
+    const baseY = canvas.height + 10;
+
+    ctx.save();
+
+    if (_treeFull) {
+      // Scale up from bottom-centre once all segments are drawn
+      ctx.translate(cx, canvas.height);
+      ctx.scale(_treeScale, _treeScale);
+      ctx.translate(-cx, -canvas.height);
+    }
+
+    const count = Math.min(_treeSegments.length, Math.floor(_treeGrowth));
+    for (let i = 0; i < count; i++) {
+      const seg = _treeSegments[i];
+      const glow = Math.max(0, 28 - seg.depth * 2);
+      ctx.strokeStyle = _treeColor(seg.depth);
+      ctx.lineWidth = Math.max(1, (seg.depth / TREE_DEPTH) * 8);
+      ctx.shadowColor = _treeColor(seg.depth);
+      ctx.shadowBlur = glow;
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(seg.x2, seg.y2);
+      ctx.stroke();
+    }
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+
+    ctx.restore();
+
+    // Spawn leaf particles at the current growth frontier
+    if (count > 0 && count < _treeSegments.length && timestamp - _treeLastSpawn > 80) {
+      _treeLastSpawn = timestamp;
+      const tip = _treeSegments[count - 1];
+      if (tip.depth <= 3) {
+        spawnParticles(tip.x2, tip.y2, 2, _treeColor(tip.depth));
+      }
+    }
+  }
+
+  // ---- Public API ----
+
   function init() {
     phase = 'idle';
     bossIndex = 0;
     elapsed = 0;
     onDoneCallback = null;
     mtCarriages = [];
+    _btnRestart = null;
+    _btnKeepGoing = null;
+    _treeSegments = [];
+    _treeGrowth = 0;
+    _treeScale = 1;
+    _treeFull = false;
+    _treeLastSpawn = 0;
   }
 
   function startReveal(index, callback) {
-    bossIndex = Math.max(0, Math.min(index, Milestones.getFinalIndex()));
-    phase = 'compare';
+    bossIndex = Math.max(0, Math.min(index, Milestones.getAll().length - 1));
     elapsed = 0;
     onDoneCallback = callback || null;
 
     const m = Milestones.get(bossIndex);
     console.log('[BossReveal] Revealing milestone', bossIndex, ':', m ? m.name : '');
-    Audio.playBossChord();
+
+    if (m && m.key === 'maximum-tree') {
+      // Maximum Tree: build fractal and start growth
+      phase = 'maximum_tree';
+      _treeSegments = [];
+      _treeGrowth = 0;
+      _treeScale = 1;
+      _treeFull = false;
+      _buildTree(canvas.width / 2, canvas.height + 10, -Math.PI / 2, canvas.height * 0.38, TREE_DEPTH, _treeSegments);
+      Audio.playBossChord();
+    } else {
+      phase = 'compare';
+      Audio.playBossChord();
+    }
+  }
+
+  function setChoiceCallbacks(onRestart, onKeepGoing) {
+    _onRestartCb = onRestart;
+    _onKeepGoingCb = onKeepGoing;
+  }
+
+  function handleTap(x, y) {
+    if (phase !== 'choice') return;
+
+    if (_btnRestart) {
+      const b = _btnRestart;
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        _btnRestart = null; _btnKeepGoing = null;
+        if (_onRestartCb) _onRestartCb();
+        return;
+      }
+    }
+    if (_btnKeepGoing) {
+      const b = _btnKeepGoing;
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+        _btnRestart = null; _btnKeepGoing = null;
+        if (_onKeepGoingCb) _onKeepGoingCb();
+        return;
+      }
+    }
   }
 
   function update(dt) {
@@ -222,7 +395,8 @@ const BossReveal = (() => {
 
     if (phase === 'compare') {
       if (elapsed >= REVEAL_MS + HOLD_MS) {
-        if (bossIndex >= Milestones.getFinalIndex()) {
+        const m = Milestones.get(bossIndex);
+        if (m && m.key === 'maximum-train') {
           phase = 'maximum_train';
           elapsed = 0;
           Audio.playMaximumTrainSound();
@@ -235,10 +409,27 @@ const BossReveal = (() => {
     }
 
     if (phase === 'maximum_train') {
+      // Transition to choice screen after delay
       if (elapsed >= MAXIMUM_TRAIN_ENTRY_MS && onDoneCallback) {
         const cb = onDoneCallback;
         onDoneCallback = null;
         cb();
+      }
+      if (elapsed >= CHOICE_DELAY_MS && phase === 'maximum_train') {
+        phase = 'choice';
+      }
+      return;
+    }
+
+    if (phase === 'maximum_tree') {
+      if (!_treeFull) {
+        _treeGrowth = Math.min(_treeSegments.length, _treeGrowth + 0.9);
+        if (_treeGrowth >= _treeSegments.length) {
+          _treeFull = true;
+        }
+      } else {
+        // Keep growing: slow zoom
+        _treeScale = Math.min(3.5, _treeScale + 0.0008);
       }
     }
   }
@@ -301,11 +492,10 @@ const BossReveal = (() => {
         ctx.fillText('Next: ' + next.name, cx, cy + 244);
       }
       ctx.restore();
-
       return;
     }
 
-    if (phase === 'maximum_train') {
+    if (phase === 'maximum_train' || phase === 'choice') {
       const t = Math.min(1, elapsed / MAXIMUM_TRAIN_ENTRY_MS);
 
       ctx.save();
@@ -329,7 +519,7 @@ const BossReveal = (() => {
       }
       ctx.restore();
 
-      _drawMaximumTrain(ctx, timestamp);
+      _drawMaximumTrainCarriages(ctx, timestamp);
 
       ctx.save();
       ctx.textAlign = 'center';
@@ -342,6 +532,43 @@ const BossReveal = (() => {
       ctx.shadowBlur = 0;
       ctx.shadowColor = 'transparent';
       ctx.restore();
+
+      if (phase === 'choice') {
+        // Heading above buttons
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#eef4ff';
+        ctx.font = '500 22px -apple-system, sans-serif';
+        ctx.globalAlpha = 0.9;
+        ctx.fillText("You've reached Maximum Train!", cx, canvas.height * 0.58);
+        ctx.restore();
+
+        _drawChoiceButtons(ctx, timestamp);
+      }
+      return;
+    }
+
+    if (phase === 'maximum_tree') {
+      // Dark background
+      ctx.save();
+      ctx.fillStyle = 'rgba(1, 8, 3, 0.88)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      _drawFractalTree(ctx, timestamp);
+
+      // Title
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#44ff88';
+      ctx.font = 'bold 38px -apple-system, sans-serif';
+      ctx.globalAlpha = Math.min(1, elapsed / 2000);
+      ctx.shadowColor = '#44ff88';
+      ctx.shadowBlur = 22;
+      ctx.fillText('maximum tree', cx, 100);
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+      ctx.restore();
     }
   }
 
@@ -349,5 +576,9 @@ const BossReveal = (() => {
   function isRunning() { return phase !== 'idle' && phase !== 'complete'; }
   function isComplete() { return phase === 'complete'; }
 
-  return { init, startReveal, update, draw, isIdle, isRunning, isComplete };
+  return {
+    init, startReveal, setChoiceCallbacks, handleTap,
+    update, draw,
+    isIdle, isRunning, isComplete,
+  };
 })();
