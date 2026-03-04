@@ -25,20 +25,9 @@ const BrickSystem = (() => {
     return STAGE_COLORS[2];
   }
 
-  function makeCluster(value, baseX, baseY, phase, color) {
-    return {
-      value,
-      baseX,
-      baseY,
-      x: baseX,
-      y: baseY,
-      phase,
-      radius: Math.max(36, 28 + value * 2.5),
-      color,
-      isDeflecting: false,
-      deflectTimer: 0,
-      deflectAngle: 0,
-    };
+  function makeCluster(value, baseX, baseY, phase, color, radius) {
+    return { value, baseX, baseY, x: baseX, y: baseY, phase, radius, color,
+             isDeflecting: false, deflectTimer: 0, deflectAngle: 0 };
   }
 
   function generateQuestion(band) {
@@ -182,6 +171,33 @@ const BrickSystem = (() => {
     return arr.slice(0, CLUSTER_COUNT - 1);
   }
 
+  function _resolveOverlaps(clusters, areaTop, areaBottom) {
+    const FLOAT_X = 12, FLOAT_Y = 14, EDGE = 16;
+    for (let pass = 0; pass < 6; pass++) {
+      for (let i = 0; i < clusters.length; i++) {
+        for (let j = i + 1; j < clusters.length; j++) {
+          const ci = clusters[i], cj = clusters[j];
+          const minDist = ci.radius + cj.radius + EDGE;
+          const dx = cj.baseX - ci.baseX;
+          const dy = cj.baseY - ci.baseY;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 0.1;
+          if (dist < minDist) {
+            const push = (minDist - dist) / 2;
+            const ax = (dx / dist) * push, ay = (dy / dist) * push;
+            ci.baseX -= ax; ci.baseY -= ay;
+            cj.baseX += ax; cj.baseY += ay;
+          }
+        }
+      }
+    }
+    clusters.forEach(c => {
+      const mx = c.radius + FLOAT_X + 4, my = c.radius + FLOAT_Y + 4;
+      c.baseX = Math.max(mx, Math.min(canvas.width - mx, c.baseX));
+      c.baseY = Math.max(areaTop + my, Math.min(areaBottom - my, c.baseY));
+      c.x = c.baseX; c.y = c.baseY;
+    });
+  }
+
   function newPuzzle() {
     isActive = true;
     const diff = StateMachine.getCurrentDifficulty();
@@ -213,20 +229,41 @@ const BrickSystem = (() => {
       [values[i], values[j]] = [values[j], values[i]];
     }
 
+    const profile = getDeviceProfile();
     const w = canvas.width;
     const h = canvas.height;
     const trackHeight = 65;
     const topPad = trackHeight + 80;
-    const playH = h - topPad - 80;
+    const bottomPad = 80;
+    const playH = h - topPad - bottomPad;
+
+    // Phone portrait → 2×2 grid; everything else → 4-column row
+    const useGrid = profile.isPortrait && profile.type === 'phone';
+    const FLOAT_X = 12;  // matches reduced float in update()
+    const GAP = 20;      // minimum visible gap between circle edges
+
+    const maxRadius = useGrid
+      ? Math.min(64, w / 4 - FLOAT_X - GAP)
+      : Math.min(64, w / (CLUSTER_COUNT * 2) - FLOAT_X - GAP);
 
     clusters = values.map((v, i) => {
-      const x = (w / (CLUSTER_COUNT + 1)) * (i + 1);
-      const y = topPad + playH * 0.35 + randomBetween(-30, 30);
-      const color = colors[i % colors.length];
+      const r = Math.min(maxRadius, Math.max(26, 18 + v * 0.9));
 
-      const c = makeCluster(v, x, y, i * 2.09, color);
-      return c;
+      let baseX, baseY;
+      if (useGrid) {
+        const col = i % 2;
+        const row = Math.floor(i / 2);
+        baseX = w * (col === 0 ? 0.27 : 0.73);
+        baseY = topPad + playH * (row === 0 ? 0.3 : 0.68);
+      } else {
+        baseX = (w / (CLUSTER_COUNT + 1)) * (i + 1);
+        baseY = topPad + playH * 0.38 + randomBetween(-20, 20);
+      }
+
+      return makeCluster(v, baseX, baseY, i * 2.09, colors[i % colors.length], r);
     });
+
+    _resolveOverlaps(clusters, topPad, h - bottomPad);
 
     console.log('[BrickSystem] New puzzle:', promptText, '=', targetNumber, '| clusters:', values);
   }
@@ -271,8 +308,8 @@ const BrickSystem = (() => {
     const t = timestamp * 0.001;
     clusters.forEach(c => {
       // Compute rendered position here so draw() is a pure observer
-      const floatX = c.baseX + Math.cos(t * 0.7 + c.phase) * 18;
-      const floatY = c.baseY + Math.sin(t + c.phase) * 22;
+      const floatX = c.baseX + Math.cos(t * 0.7 + c.phase) * 12;
+      const floatY = c.baseY + Math.sin(t + c.phase) * 14;
       let dx = 0, dy = 0;
       if (c.isDeflecting) {
         c.deflectTimer += dt;
@@ -309,36 +346,27 @@ const BrickSystem = (() => {
 
   function handleTap(x, y) {
     if (!isActive) return;
-
+    let hit = null, hitDist = Infinity;
     for (const cluster of clusters) {
-      const dx = x - cluster.x;
-      const dy = y - cluster.y;
-      if (Math.sqrt(dx * dx + dy * dy) < cluster.radius * 1.7) {
-        if (cluster.value === targetNumber) {
-          // Correct!
-          isActive = false;
-          Audio.init();
-          Audio.playCorrectTone(cluster.value);
-          spawnParticles(cluster.x, cluster.y, 28, cluster.color);
-          StateMachine.onCorrectAnswer({ target: cluster.value });
+      const dx = x - cluster.x, dy = y - cluster.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < cluster.radius + 20 && dist < hitDist) { hit = cluster; hitDist = dist; }
+    }
+    if (!hit) return;
 
-          // Queue next puzzle after particle animation
-          setTimeout(() => {
-            if (StateMachine.getState() === StateMachine.STATES.PUZZLE) {
-              newPuzzle();
-            }
-          }, 900);
-        } else {
-          // Wrong — gentle deflection only, no penalty
-          Audio.init();
-          Audio.playNeutralTone();
-          cluster.isDeflecting = true;
-          cluster.deflectTimer = 0;
-          cluster.deflectAngle = Math.atan2(dy, dx) + Math.PI;
-          if (window.Score) Score.breakCombo();
-        }
-        return;
-      }
+    if (hit.value === targetNumber) {
+      isActive = false;
+      Audio.init(); Audio.playCorrectTone(hit.value);
+      spawnParticles(hit.x, hit.y, 28, hit.color);
+      StateMachine.onCorrectAnswer({ target: hit.value });
+      setTimeout(() => {
+        if (StateMachine.getState() === StateMachine.STATES.PUZZLE) newPuzzle();
+      }, 900);
+    } else {
+      Audio.init(); Audio.playNeutralTone();
+      hit.isDeflecting = true; hit.deflectTimer = 0;
+      hit.deflectAngle = Math.atan2(y - hit.y, x - hit.x) + Math.PI;
+      if (window.Score) Score.breakCombo();
     }
   }
 

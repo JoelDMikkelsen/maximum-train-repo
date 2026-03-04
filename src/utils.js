@@ -19,6 +19,20 @@ function rgbStr(r, g, b, a = 1) { return `rgba(${r},${g},${b},${a})`; }
 function randomBetween(min, max) { return min + Math.random() * (max - min); }
 function randomInt(min, max) { return Math.floor(randomBetween(min, max + 1)); }
 
+function getDeviceProfile() {
+  const w = canvas.width;
+  const h = canvas.height;
+  const shorter = Math.min(w, h);
+  const isPortrait = h >= w;
+  const ua = navigator.userAgent;
+  const isMobileUA = /Mobi|Android|iPhone|iPad|iPod/i.test(ua);
+  let type;
+  if (shorter < 500) type = 'phone';
+  else if (shorter < 900 || isMobileUA) type = 'tablet';
+  else type = 'desktop';
+  return { type, isPortrait, w, h };
+}
+
 // Particle system — internal state is encapsulated, public API exposed as globals
 (function () {
   const _pool = [];
